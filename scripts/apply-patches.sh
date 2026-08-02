@@ -12,7 +12,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PATCHES_DIR="$SCRIPT_DIR/patches"
+PATCHES_DIR="$SCRIPT_DIR/../frontend/patches"
 TARGET="${1:?usage: ./apply.sh /path/to/excalidraw [--export]}"
 MODE="${2:-apply}"
 

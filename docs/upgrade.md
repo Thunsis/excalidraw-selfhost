@@ -37,7 +37,7 @@ HTTP contract (`/api/*`, `/v1/ai/*`). Upgrade them whenever you like:
 ```bash
 cd excalidraw-selfhost
 git pull
-./install.sh          # regenerates launchd configs
+./scripts/install.sh          # regenerates launchd configs
 for job in ws-backend ai-backend caddy cloudflared; do
   launchctl bootout gui/$(id -u)/com.excalidraw.$job 2>/dev/null
   launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.excalidraw.$job.plist

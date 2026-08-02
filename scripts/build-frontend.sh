@@ -32,20 +32,20 @@ restore_clean() {
 
 case "$MODE" in
   --apply)
-    "$SCRIPT_DIR/frontend/apply.sh" "$TARGET"
+    "$SCRIPT_DIR/apply-patches.sh" "$TARGET"
     echo ""
     echo "Tree patched. Do your dev work, then re-export:"
-    echo "  $SCRIPT_DIR/frontend/apply.sh $TARGET --export"
+    echo "  $SCRIPT_DIR/apply-patches.sh $TARGET --export"
     echo "  $SCRIPT_DIR/build-frontend.sh $TARGET"
     exit 0
     ;;
   --keep)
     restore_clean
-    "$SCRIPT_DIR/frontend/apply.sh" "$TARGET"
+    "$SCRIPT_DIR/apply-patches.sh" "$TARGET"
     ;;
   *)
     restore_clean
-    "$SCRIPT_DIR/frontend/apply.sh" "$TARGET"
+    "$SCRIPT_DIR/apply-patches.sh" "$TARGET"
     ;;
 esac
 

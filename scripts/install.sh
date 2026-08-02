@@ -12,7 +12,7 @@
 # ============================================================
 set -euo pipefail
 
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="$REPO_DIR/.env"
 GENERATED="$REPO_DIR/deploy/generated"
 DRY_RUN="${1:-}"
@@ -36,7 +36,7 @@ set +a
 : "${LAUNCH_AGENTS_DIR:=$HOME/Library/LaunchAgents}"
 : "${CLOUDFLARED_DIR:=$HOME/.cloudflared}"
 : "${EXCALIDRAW_REPO_DIR:=$REPO_DIR/../excalidraw}"
-: "${WS_DATA_DIR:=$REPO_DIR/backend/data}"
+: "${WS_DATA_DIR:=$REPO_DIR/server/workspace/data}"
 : "${JWT_SECRET_FILE:=$WS_DATA_DIR/.jwt-secret}"
 : "${OPENAI_CONFIG_FILE:=$HOME/.hermes/config.yaml}"
 : "${MODEL:=deepseek-v4-flash}"

@@ -50,8 +50,8 @@ git clone https://github.com/Thunsis/excalidraw-selfhost.git
 cd excalidraw-selfhost
 
 cp .env.example .env        # fill in your values
-./install.sh --dry-run      # generates deploy/generated/* (check them)
-./install.sh                # symlinks launchd agents, ready to bootstrap
+./scripts/install.sh --dry-run  # generates deploy/generated/* (check them)
+./scripts/install.sh            # symlinks launchd agents, ready to bootstrap
 ```
 
 ### Frontend (patches)
@@ -83,16 +83,17 @@ Simple by design: **username IS the credential** (no password, registration clos
 ## Project layout
 
 ```
-backend/        ws-backend (Express + better-sqlite3 + JWT)
-ai-backend/     AI text-to-diagram SSE proxy
+server/workspace/  ws-backend (Express + better-sqlite3 + JWT)
+server/ai/         AI text-to-diagram SSE proxy
 frontend/patches/  Excalidraw frontend customization (diff + new files)
-deploy/templates/  plist + Caddyfile templates (rendered by install.sh)
-install.sh      generate config + install launchd agents (idempotent)
+deploy/templates/  plist + Caddyfile templates (rendered by scripts/install.sh)
+scripts/           install / apply-patches / build-frontend (idempotent)
+docs/              upgrade guide
 ```
 
 ## Data & backup
 
-- SQLite at `WS_DATA_DIR` (default `backend/data/workspace.db`) — scenes, library, chat history, users.
+- SQLite at `WS_DATA_DIR` (default `server/workspace/data/workspace.db`) — scenes, library, chat history, users.
 - Backup while running: `sqlite3 workspace.db ".backup 'backup-$(date +%F).db'"` (WAL-safe).
 
 ## License
