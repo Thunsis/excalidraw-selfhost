@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <!-- rounded canvas background -->
+  <rect x="8" y="8" width="104" height="104" rx="22" fill="#f8f9fa" stroke="#6965db" stroke-width="4"/>
+  <!-- hand-drawn style pencil strokes -->
+  <path d="M28 38 L48 38 M28 54 L64 54 M28 70 L44 70 M28 86 L58 86" stroke="#6965db" stroke-width="4" stroke-linecap="round"/>
+  <!-- circle (hand-drawn, imperfect) -->
+  <path d="M66 36 C78 32 88 38 87 50 C86 62 72 66 62 58 C54 51 58 42 68 40" fill="none" stroke="#0b0b0f" stroke-width="4" stroke-linecap="round"/>
+  <!-- arrow -->
+  <path d="M70 74 L88 74 M80 66 L88 74 L80 82" stroke="#0b0b0f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- cloud symbol -->
+  <path d="M92 96 C92 88 84 86 78 90 C74 84 62 86 62 94 C56 92 50 98 54 104 L92 104 C98 104 96 96 92 96 Z" fill="#6965db" opacity="0.85"/>
+</svg>

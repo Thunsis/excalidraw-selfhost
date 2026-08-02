@@ -1,26 +1,99 @@
-# excalidraw-selfhost
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Thunsis/excalidraw-selfhost/main/docs/logo.svg" width="120" alt="excalidraw-selfhost logo">
+</p>
 
-**Self-hosted Excalidraw+ alternative** — 登录、云场景、云素材库、AI 画图，全部自托管，**禁止商用**（PolyForm Noncommercial 1.0.0）。
+<h1 align="center">excalidraw-selfhost</h1>
 
-A drop-in self-hosted backend + frontend patches for [Excalidraw](https://github.com/excalidraw/excalidraw) that gives you the **Excalidraw+ experience** (sign in, cloud scenes, cloud library, AI text-to-diagram) **without the subscription** — data stays on your machine.
+<p align="center">
+  <b>The Excalidraw+ experience, fully self-hosted.</b><br>
+  Sign in, cloud scenes, cloud library & AI text-to-diagram — without the subscription, without the SaaS.
+</p>
 
-> **License**: PolyForm Noncommercial 1.0.0 — personal / non-commercial use free.
-> Note: the patched Excalidraw frontend still contains MIT-licensed upstream code.
+<p align="center">
+  <a href="https://github.com/Thunsis/excalidraw-selfhost/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue.svg" alt="License: PolyForm Noncommercial"></a>
+  <a href="#"><img src="https://img.shields.io/badge/platform-macOS-lightgrey.svg" alt="Platform: macOS"></a>
+  <a href="#"><img src="https://img.shields.io/badge/node-%3E%3D24-green.svg" alt="Node >= 24"></a>
+  <a href="https://github.com/Thunsis/excalidraw-selfhost"><img src="https://img.shields.io/github/stars/Thunsis/excalidraw-selfhost" alt="GitHub stars"></a>
+</p>
+
+<p align="center">
+  <a href="#features">Features</a> ·
+  <a href="#quick-start">Quick Start</a> ·
+  <a href="#architecture">Architecture</a> ·
+  <a href="#project-layout">Layout</a> ·
+  <a href="#data--privacy">Privacy</a> ·
+  <a href="#faq">FAQ</a> ·
+  <a href="#license">License</a>
+</p>
+
+---
 
 ## Why
 
-Excalidraw stores drawings in browser storage by default. Excalidraw+ (the official paid tier) adds cloud sync — but it's SaaS, and there is no official self-host path (see [excalidraw/excalidraw#1772](https://github.com/excalidraw/excalidraw/issues/1772), open since 2020 with 130+ 👍).
+Excalidraw stores everything in browser storage. [Excalidraw+](https://plus.excalidraw.com) — the official paid tier — adds cloud sync, but it's SaaS with no self-host path (see [excalidraw/excalidraw#1772](https://github.com/excalidraw/excalidraw/issues/1772), open since 2020).
 
-Existing self-host projects focus on **real-time collaboration**. This project fills the other gap: a **personal cloud workspace** — your scenes, your library, your AI assistant, on your own infra.
+Existing self-host projects (alswl/excalidraw-collaboration et al.) focus on **real-time collaboration**. This project fills the other gap: a **personal cloud workspace** — your scenes, your library, your AI assistant, on your own infra. All data stays on your machine.
 
-| Feature | excalidraw-selfhost | alswl/excalidraw-collaboration | Excalidraw+ (paid) |
+## Features
+
+| | excalidraw-selfhost | alswl/excalidraw-collaboration | Excalidraw+ (paid) |
 |---|---|---|---|
-| Sign in (username as key) | ✅ | ❌ | ✅ |
-| Cloud scenes (per-user, SQLite) | ✅ | ❌ | ✅ |
-| Cloud library sync | ✅ | ❌ | ✅ |
-| AI text-to-diagram (self-hosted) | ✅ | ❌ | ✅ |
-| Real-time collaboration | ❌ (roadmap) | ✅ | ✅ |
-| Data ownership | ✅ 100% | ✅ | ❌ |
+| **Sign in** (username as key) | ✅ | ❌ | ✅ |
+| **Cloud scenes** (per-user, SQLite) | ✅ | ❌ | ✅ |
+| **Cloud library sync** | ✅ | ❌ | ✅ |
+| **AI text-to-diagram** (self-hosted) | ✅ | ❌ | ✅ |
+| Real-time collaboration | 🚧 roadmap | ✅ | ✅ |
+| **Data ownership** | ✅ 100% | ✅ | ❌ |
+
+- **Single-source monorepo** — the upstream Excalidraw repo stays pristine; customization lives as a versioned patch set (`patch/`), applied at build time.
+- **Zero-config backends** — Express + SQLite; no external services required.
+- **WAL-safe backups & healthcheck** — `make backup`, `make check`, cron-friendly.
+- **Tunnel-ready** — Cloudflare Tunnel support for private HTTPS access without opening ports.
+
+## Quick Start
+
+> **Requirements**: macOS (launchd) · Node ≥ 24 · a local clone of [excalidraw/excalidraw](https://github.com/excalidraw/excalidraw) (pinned `1acf66e`) · optional Cloudflare account
+
+```bash
+git clone https://github.com/Thunsis/excalidraw-selfhost.git
+cd excalidraw-selfhost
+
+cp .env.example .env            # fill in your values
+make install --dry-run          # preview generated configs in deploy/generated/
+make install                    # symlink launchd agents + configs
+```
+
+Then bootstrap the frontend (one-time, per Excalidraw repo):
+
+```bash
+cd /path/to/excalidraw          # pinned commit 1acf66e
+git apply /path/to/excalidraw-selfhost/patch/excalidraw.patch
+cp -R /path/to/excalidraw-selfhost/patch/new/ .
+corepack yarn build             # → excalidraw-app/build/ (served by caddy)
+```
+
+Finally start the services (or reboot — `RunAtLoad` picks them up):
+
+```bash
+for job in ws-backend ai-backend caddy cloudflared; do
+  launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.excalidraw.$job.plist
+done
+```
+
+Open `https://localhost:3001` (or your tunnel domain) and sign in with any username.
+
+### Frontend development workflow
+
+Patches are the **single source of truth**. The Excalidraw repo stays clean (0 uncommitted changes):
+
+```bash
+make build            # restore → patch → build → restore (in the excalidraw repo)
+make patch-export     # after editing code: re-export excalidraw.patch + new/
+```
+
+### Auth model
+
+Deliberately simple: **username IS the credential** — no passwords, registration closed. Perfect for private self-hosting; **do not expose to the public internet** without adding real auth.
 
 ## Architecture
 
@@ -33,71 +106,59 @@ Existing self-host projects focus on **real-time collaboration**. This project f
                                 ┌────────────────┐   ┌────────────────┐   ┌────────────────┐
                                 │ /ws-api → 3020 │   │ /ai-proxy→3016 │   │ build/ (static)│
                                 │ ws-server      │   │ ai-server      │   │ frontend       │
-                                │ (Express+SQLite)│  │ (opencode-go)  │   │ (patched)      │
+                                │ (Express+SQLite)│  │ (SSE proxy)    │   │ (patched)      │
                                 └────────────────┘   └────────────────┘   └────────────────┘
 ```
 
-- **ws-server** (3020): JWT auth, scenes CRUD (`/api/scenes`), per-user key-value data (`/api/user-data/*` — library, TTD chats), share links. SQLite, zero config.
-- **ai-server** (3016): SSE proxy for Excalidraw's Text-to-Diagram → any OpenAI-compatible endpoint (default opencode.ai, model `deepseek-v4-flash`).
-- **caddy** (3001): serves the built frontend + reverse-proxies `/ws-api` and `/ai-proxy`. HTTPS with local (self-signed) certs so cloudflared uses HTTP/2.
-- **cloudflared**: optional — exposes your instance via a Cloudflare Tunnel (no open ports, no DNS setup).
+- **ws-server** (3020) — JWT auth, scenes CRUD, per-user key-value data (library, AI chats), share links. Express + better-sqlite3.
+- **ai-server** (3016) — SSE proxy for Excalidraw's Text-to-Diagram → any OpenAI-compatible endpoint (default `deepseek-v4-flash` via opencode.ai).
+- **caddy** (3001) — serves the patched frontend build + reverse-proxies `/ws-api` and `/ai-proxy`. Self-signed HTTPS for HTTP/2.
+- **cloudflared** — optional Cloudflare Tunnel: no open ports, no DNS setup.
 
-## Quick start
-
-Requires: macOS (launchd), Node ≥ 24 (better-sqlite3 ABI), a local clone of `excalidraw/excalidraw` (patched & built — see below), optionally Cloudflare Tunnel.
-
-```bash
-git clone https://github.com/Thunsis/excalidraw-selfhost.git
-cd excalidraw-selfhost
-
-cp .env.example .env            # fill in your values
-make install --dry-run          # generates deploy/generated/* (check them)
-make install                    # symlinks launchd agents + configs, ready to bootstrap
-```
-
-### Frontend (patch)
-
-The frontend customization lives in `patch/` — a delta against a **pinned upstream commit** (`1acf66e`):
-
-```bash
-# in your excalidraw monorepo clone (pinned: 1acf66e)
-cd /path/to/excalidraw
-git apply /path/to/excalidraw-selfhost/patch/excalidraw.patch
-cp -R /path/to/excalidraw-selfhost/patch/new/ .
-corepack yarn build             # produces excalidraw-app/build/
-```
-
-Single-source workflow: patches are the only truth. After dev changes, re-export:
-
-```bash
-make patch-export               # re-export patches from a modified tree
-make build                      # restore -> patch -> build -> restore
-```
-
-### Auth model
-
-Simple by design: **username IS the credential** (no password, registration closed). Suitable for private/self-hosted use. **Do not expose to the public internet** without adding real auth.
-
-## Data & privacy
-
-- **All user data lives in SQLite** at `WS_DATA_DIR` (default `<repo>/apps/ws-server/data/`) — scenes, library, chat history, users. This directory is **gitignored** (`.gitignore: apps/ws-server/data/`) — your drawings never enter the repo or GitHub.
-- JWT secret is auto-generated on first run at `<WS_DATA_DIR>/.jwt-secret` (mode 600) and persists across restarts.
-- `make backup` — WAL-safe snapshot to `apps/ws-server/data/backups/`, keeps last 7.
-- `make check` — healthcheck: ports + launchd + db integrity (cron-friendly, silent when healthy).
-
-## Project layout
+## Project Layout
 
 ```
-apps/            deployable applications (each with its own README)
+apps/            deployable applications (each self-contained)
   ws-server/     cloud workspace backend (Express + better-sqlite3 + JWT)
   ai-server/     AI text-to-diagram SSE proxy
 patch/           frontend customization delta (excalidraw.patch + new/)
 deploy/          platform-specific assembly (launchd / caddy / cloudflared)
 scripts/         ops toolchain (install / apply-patch / build / backup / healthcheck)
-docs/            architecture decisions, upgrade SOP, troubleshooting
-Makefile         unified command entry (make install / build / backup / check / doctor)
+docs/            upgrade guide, troubleshooting
+Makefile         unified entry point (make install / build / patch / backup / check / doctor)
 ```
+
+## Data & Privacy
+
+- **All user data lives in SQLite** at `apps/ws-server/data/` (default `WS_DATA_DIR`) — scenes, library, chat history, users.
+- That directory is **gitignored** (`.gitignore: apps/ws-server/data/`) — your drawings never enter the repo or GitHub.
+- JWT secret auto-generates on first run at `<WS_DATA_DIR>/.jwt-secret` (mode `600`), persists across restarts.
+- `make backup` — WAL-safe snapshot, keeps last 7. `make check` — healthcheck (silent when healthy, cron-friendly).
+
+## FAQ
+
+**Why not just use alswl/excalidraw-collaboration?**
+It's built for real-time collaboration. This project targets the single-user cloud workspace (Excalidraw+ replacement). If you need collab, keep both — they don't conflict.
+
+**Why PolyForm Noncommercial?**
+Personal and non-commercial use is free; commercial use requires a license. The patched frontend still contains MIT-licensed upstream code (see [LICENSE](LICENSE)).
+
+**Can I use a different AI backend?**
+Yes — any OpenAI-compatible endpoint. Set `OPENAI_BASE` / `MODEL` / `OPENAI_API_KEY` in `.env`.
+
+**Is my data backed up?**
+`make backup` snapshots the SQLite DB WAL-safely (works while running) and keeps 7 generations. Pair with cron for daily backups.
+
+**How do I upgrade when Excalidraw upstream moves?**
+Deliberately slow (quarterly). See [docs/upgrade.md](docs/upgrade.md) — pull, resolve conflicts by hand, re-export the patch.
+
+## Roadmap
+
+- [x] Cloud workspace (sign in / scenes / library / AI)
+- [ ] Real-time collaboration
+- [ ] Docker deployment (non-macOS)
+- [ ] Password auth (optional)
 
 ## License
 
-PolyForm Noncommercial 1.0.0 — see [LICENSE](LICENSE). Personal and non-commercial use is free; commercial use requires permission. The frontend patch is applied against Excalidraw (MIT) — upstream code remains MIT-licensed.
+[PolyForm Noncommercial 1.0.0](LICENSE) — © 2026 Thunsis. Personal & non-commercial use free; commercial use requires permission. Upstream Excalidraw code remains MIT-licensed.
