@@ -23,6 +23,7 @@
   <a href="#project-layout">Layout</a> ·
   <a href="#data--privacy">Privacy</a> ·
   <a href="#faq">FAQ</a> ·
+  <a href="#scope">Scope</a> ·
   <a href="#license">License</a>
 </p>
 
@@ -42,8 +43,10 @@ Existing self-host projects (alswl/excalidraw-collaboration et al.) focus on **r
 | **Cloud scenes** (per-user, SQLite) | ✅ | ❌ | ✅ |
 | **Cloud library sync** | ✅ | ❌ | ✅ |
 | **AI text-to-diagram** (self-hosted) | ✅ | ❌ | ✅ |
-| Real-time collaboration | 🚧 roadmap | ✅ | ✅ |
+| Real-time collaboration | ❌ (out of scope) | ✅ | ✅ |
 | **Data ownership** | ✅ 100% | ✅ | ❌ |
+
+> **Scope**: this is a **personal cloud** tool — one user's drawings, library & AI, synced across devices, fully owned. Real-time multi-user collaboration is deliberately out of scope.
 
 - **Single-source monorepo** — the upstream Excalidraw repo stays pristine; customization lives as a versioned patch set (`patch/`), applied at build time.
 - **Zero-config backends** — Express + SQLite; no external services required.
@@ -138,7 +141,7 @@ Makefile         unified entry point (make install / build / patch / backup / ch
 ## FAQ
 
 **Why not just use alswl/excalidraw-collaboration?**
-It's built for real-time collaboration. This project targets the single-user cloud workspace (Excalidraw+ replacement). If you need collab, keep both — they don't conflict.
+Different goal. That project is built for real-time multi-user collaboration; this one is a **personal cloud** — your scenes, library and AI synced across your own devices. If you need collab, that project is the right choice; this one isn't trying to be it.
 
 **Why PolyForm Noncommercial?**
 Personal and non-commercial use is free; commercial use requires a license. The patched frontend still contains MIT-licensed upstream code (see [LICENSE](LICENSE)).
@@ -152,12 +155,16 @@ Yes — any OpenAI-compatible endpoint. Set `OPENAI_BASE` / `MODEL` / `OPENAI_AP
 **How do I upgrade when Excalidraw upstream moves?**
 Deliberately slow (quarterly). See [docs/upgrade.md](docs/upgrade.md) — pull, resolve conflicts by hand, re-export the patch.
 
-## Roadmap
+## Scope
 
-- [x] Cloud workspace (sign in / scenes / library / AI)
-- [ ] Real-time collaboration
-- [ ] Docker deployment (non-macOS)
-- [ ] Password auth (optional)
+This project is built around a single, clear goal: **your personal Excalidraw cloud**. One user, their scenes, their library, their AI — synced across devices, owned entirely by them.
+
+Explicit non-goals (no plans to add):
+
+- Real-time multi-user collaboration — use [alswl/excalidraw-collaboration](https://github.com/alswl/excalidraw-collaboration) if you need it.
+- Multi-tenant SaaS / public hosting — usernames are the only credential, by design.
+
+The codebase stays small and focused: a personal cloud is a solved problem in ~1,000 lines across two backends; adding collaboration would double the surface and complexity for a scenario this project doesn't target.
 
 ## License
 
