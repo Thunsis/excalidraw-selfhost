@@ -9,13 +9,16 @@
 REPO_DIR := $(shell pwd)
 EXCALIDRAW_REPO ?= $(REPO_DIR)/../excalidraw
 
-.PHONY: help install build patch patch-export backup check doctor
+.PHONY: help install build patch patch-export backup check doctor cli
 
 help: ## show available commands
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 
 install: ## generate config + install launchd agents (reads .env)
 	./scripts/install.sh
+
+cli: ## put `excalidraw` CLI on PATH (npm link)
+	cd cli && npm link
 
 build: ## rebuild frontend from patches (restore -> patch -> build -> restore)
 	./scripts/build-frontend.sh $(EXCALIDRAW_REPO)

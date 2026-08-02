@@ -98,18 +98,22 @@ export const WorkspaceDialog = ({
   };
 
   const loadScenes = useCallback(async () => {
-    if (!token) {
+    // 从 auth store 同步直读 token：闭包里的 React state token 在
+    // auth-changed 事件回调里可能尚未 flush（setToken 异步），
+    // 导致"登录后立即打开 Open"仍按未登录处理。
+    const currentToken = getToken();
+    if (!currentToken) {
       return;
     }
     try {
       const data = await api<{ scenes: SceneMeta[] }>("/api/scenes", {
-        token,
+        token: currentToken,
       });
       setScenes(data.scenes);
     } catch (e: any) {
       setError(e.message);
     }
-  }, [token]);
+  }, []);
 
   // 自动保存（App.tsx onChange 驱动，2s debounce）
   // 语义：只有「保存到云端过」的画布才自动保存 ——

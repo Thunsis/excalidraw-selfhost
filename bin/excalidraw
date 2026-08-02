@@ -1,0 +1,123 @@
+#!/usr/bin/env node
+/**
+ * excalidraw — cloud workspace CLI for the self-hosted Excalidraw.
+ *
+ * Usage:
+ *   excalidraw list [--json]
+ *   excalidraw show <id> [--json]
+ *   excalidraw create <name> [elements.json]
+ *   excalidraw update <id> [--name N] [--elements file.json]
+ *   excalidraw delete <id>
+ *   excalidraw ai "<prompt>" [--name N] [--dry-run] [--verbose]
+ *   excalidraw mermaid <file.mmd> [--name N]
+ *   excalidraw export <id> [out.json]
+ *   excalidraw library get|put <file.json>
+ *   excalidraw doctor
+ *
+ * Global flags: --username <name> (or EXCALIDRAW_WS_USER), --json
+ * Config: WS_API / AI_API env (defaults to localhost 3020/3016).
+ */
+"use strict";
+
+const cmds = require("../cli/src/commands");
+
+const HELP = `excalidraw — cloud workspace CLI
+
+Usage:
+  excalidraw list [--json]
+  excalidraw show <id> [--json]
+  excalidraw create <name> [elements.json]
+  excalidraw update <id> [--name N] [--elements file.json]
+  excalidraw delete <id>
+  excalidraw ai "<prompt>" [--name N] [--dry-run] [--verbose]
+  excalidraw mermaid <file.mmd> [--name N]
+  excalidraw export <id> [out.json]
+  excalidraw library get|put <file.json>
+  excalidraw doctor
+
+Flags:
+  --username <name>   cloud account username (username IS the credential)
+  --json              machine-readable output where supported
+  --dry-run           (ai) print Mermaid only, don't save
+  --verbose           (ai) also print the generated Mermaid
+
+Env:
+  EXCALIDRAW_WS_USER  default username
+  WS_API              ws-server base (default http://127.0.0.1:3020)
+  AI_API              ai-server base (default http://127.0.0.1:3016)
+`;
+
+function parseArgs(argv) {
+  const opts = {};
+  const positional = [];
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === "--json") opts.json = true;
+    else if (a === "--dry-run") opts.dryRun = true;
+    else if (a === "--verbose") opts.verbose = true;
+    else if (a === "--username") opts.username = argv[++i];
+    else if (a === "--name") opts.name = argv[++i];
+    else if (a === "--elements") opts.elements = argv[++i];
+    else if (a.startsWith("--")) throw new Error(`unknown flag: ${a}`);
+    else positional.push(a);
+  }
+  return { opts, positional };
+}
+
+async function main() {
+  const argv = process.argv.slice(2);
+  if (argv.length === 0 || argv[0] === "-h" || argv[0] === "--help") {
+    console.log(HELP);
+    return;
+  }
+  const { opts, positional } = parseArgs(argv);
+  const cmd = positional[0];
+
+  switch (cmd) {
+    case "list":
+      await cmds.cmdList(opts);
+      break;
+    case "show":
+      if (!positional[1]) throw new Error("show requires a scene id");
+      await cmds.cmdShow(positional[1], opts);
+      break;
+    case "create":
+      if (!positional[1]) throw new Error("create requires a name");
+      await cmds.cmdCreate(positional[1], positional[2], opts);
+      break;
+    case "update":
+      if (!positional[1]) throw new Error("update requires a scene id");
+      await cmds.cmdUpdate(positional[1], opts);
+      break;
+    case "delete":
+      if (!positional[1]) throw new Error("delete requires a scene id");
+      await cmds.cmdDelete(positional[1], opts);
+      break;
+    case "ai":
+      if (!positional[1]) throw new Error('ai requires a prompt, e.g. excalidraw ai "画一个购物流程"');
+      await cmds.cmdAi(positional.slice(1).join(" "), opts);
+      break;
+    case "mermaid":
+      if (!positional[1]) throw new Error("mermaid requires a .mmd file");
+      await cmds.cmdMermaid(positional[1], opts);
+      break;
+    case "export":
+      if (!positional[1]) throw new Error("export requires a scene id");
+      await cmds.cmdExport(positional[1], positional[2], opts);
+      break;
+    case "library":
+      if (!positional[1]) throw new Error("library requires get|put");
+      await cmds.cmdLibrary(positional[1], positional[2], opts);
+      break;
+    case "doctor":
+      await cmds.cmdDoctor(opts);
+      break;
+    default:
+      throw new Error(`unknown command: ${cmd}\n\n${HELP}`);
+  }
+}
+
+main().catch((e) => {
+  console.error(`✗ ${e.message}`);
+  process.exitCode = 1;
+});
