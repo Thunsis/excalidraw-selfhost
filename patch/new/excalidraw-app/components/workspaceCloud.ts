@@ -1,13 +1,68 @@
 /**
  * 云端工作区共享逻辑（非 React 组件导出）。
- * 独立成模块是为了让 WorkspacePanel.tsx 保持"纯组件文件"，
- * 从而 Vite Fast Refresh 可以正常热更新而不触发 full reload。
+ * 独立成模块是为了让组件文件保持"纯组件"，从而 Vite Fast Refresh
+ * 可以正常热更新而不触发 full reload。同时承担 auth store 与意图事件。
  */
 
 export const API_BASE = "/ws-api";
 export const TOKEN_KEY = "excalidraw-ws-token";
 export const USER_KEY = "excalidraw-ws-username";
 export const CURRENT_KEY = "excalidraw-ws-current";
+
+/**
+ * 轻量 auth store（模块级，非 React state）：
+ * 全应用单一事实源——登录/登出只改这里 + 广播 ws:auth-changed，
+ * 各组件（场景列表/素材库/AI 门槛/自动保存）订阅事件自行刷新。
+ * 避免"各组件各自读 localStorage、互不同步"的状态分裂。
+ */
+let authToken: string | null = null;
+let authUsername: string | null = null;
+
+// 启动时从 localStorage 恢复（刷新不丢登录态）
+try {
+  authToken = localStorage.getItem(TOKEN_KEY);
+  authUsername = localStorage.getItem(USER_KEY);
+} catch {
+  /* localStorage 不可用（隐私模式等）时保持未登录 */
+}
+
+export const getToken = (): string | null => authToken;
+export const getUsername = (): string | null => authUsername;
+export const isSignedIn = (): boolean => !!authToken;
+
+/** 登录成功：写入 store + localStorage + 广播（素材库/场景列表/AI 门槛订阅刷新） */
+export const setAuth = (token: string, username: string) => {
+  authToken = token;
+  authUsername = username;
+  try {
+    localStorage.setItem(TOKEN_KEY, token);
+    localStorage.setItem(USER_KEY, username);
+  } catch {
+    /* ignore */
+  }
+  window.dispatchEvent(new CustomEvent("ws:auth-changed"));
+};
+
+/** 登出：清 store + localStorage + 广播（各订阅方恢复本地态） */
+export const clearAuth = () => {
+  authToken = null;
+  authUsername = null;
+  try {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
+  } catch {
+    /* ignore */
+  }
+  window.dispatchEvent(new CustomEvent("ws:auth-changed"));
+};
+
+// ── 意图化事件：调用方表达"想干什么"，UI 组件决定怎么呈现 ──
+/** 打开登录对话框（顶栏 Sign in / 欢迎页 / Save to Cloud 未登录 / AI 门槛） */
+export const openSignIn = () =>
+  window.dispatchEvent(new CustomEvent("ws:open-signin"));
+/** 打开工作区对话框（头像 / ☰ My Workspace / Open 云端区） */
+export const openWorkspace = () =>
+  window.dispatchEvent(new CustomEvent("ws:open-workspace"));
 
 /**
  * 提取画布文本元素（去重保序），供 AI 场景命名使用。
@@ -82,7 +137,7 @@ export const summarizeSceneName = async (
 /**
  * 保存成功后调用：AI 总结 → 更新场景名为「AI 名 (时间戳)」。
  * fire-and-forget：失败静默（保持时间戳名）；成功后广播 ws:scene-renamed
- * 供 WorkspacePanel 刷新列表显示名。
+ * 供 WorkspaceDialog 刷新列表显示名。
  */
 export const renameSceneWithAI = async (
   id: number,
@@ -128,7 +183,3 @@ export const workspaceAutoSaveRef: {
 // resetScene 清空画布会触发 onChange，若此时 currentSceneId 尚未解除绑定
 // （React setState 异步），旧闭包会把空画布 PUT 覆盖云端——同步标志位杜绝竞态。
 export const autoSaveBlockedRef: { current: boolean } = { current: false };
-
-// 从原生菜单打开面板
-export const openWorkspacePanel = () =>
-  window.dispatchEvent(new CustomEvent("ws:open-panel"));

@@ -6,7 +6,7 @@ import { exportToPlus } from "@excalidraw/excalidraw/components/icons";
 import type { NonDeletedExcalidrawElement } from "@excalidraw/element/types";
 import type { AppState, BinaryFiles } from "@excalidraw/excalidraw/types";
 
-import { generateSceneStorageName, renameSceneWithAI } from "./workspaceCloud";
+import { generateSceneStorageName, openSignIn, renameSceneWithAI } from "./workspaceCloud";
 
 /**
  * "Save as new canvas" card: replaces the native "Export to Excalidraw+" card.
@@ -26,7 +26,7 @@ export const SaveToCloud: React.FC<{
 
   const handleClick = async () => {
     if (!token) {
-      window.dispatchEvent(new CustomEvent("ws:open-panel"));
+      openSignIn();
       return;
     }
     try {

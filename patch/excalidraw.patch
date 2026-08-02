@@ -93,7 +93,7 @@ index 7082105..d34bc3a 100644
    "overrides": [
      {
 diff --git a/excalidraw-app/App.tsx b/excalidraw-app/App.tsx
-index 9ba64e1..ffe2419 100644
+index 9ba64e1..b065941 100644
 --- a/excalidraw-app/App.tsx
 +++ b/excalidraw-app/App.tsx
 @@ -41,11 +41,11 @@ import {
@@ -134,12 +134,16 @@ index 9ba64e1..ffe2419 100644
  import { isBrowserStorageStateNewer } from "./data/tabSync";
  import { ShareDialog, shareDialogStateAtom } from "./share/ShareDialog";
  import CollabError, { collabErrorIndicatorAtom } from "./collab/CollabError";
-@@ -140,12 +137,18 @@ import DebugCanvas, {
+@@ -140,12 +137,22 @@ import DebugCanvas, {
    loadSavedDebugState,
  } from "./components/DebugCanvas";
  import { AIComponents } from "./components/AI";
-+import { WorkspaceComponents } from "./components/WorkspacePanel";
++import { WorkspaceDialog } from "./components/WorkspaceDialog";
++import { SignInDialog } from "./components/SignInDialog";
 +import {
++  getToken,
++  openSignIn,
++  openWorkspace,
 +  workspaceAutoSaveRef,
 +  generateSceneStorageName,
 +  renameSceneWithAI,
@@ -154,7 +158,7 @@ index 9ba64e1..ffe2419 100644
  
  import type { CollabAPI } from "./collab/Collab";
  
-@@ -412,7 +415,7 @@ const ExcalidrawWrapper = () => {
+@@ -412,11 +419,27 @@ const ExcalidrawWrapper = () => {
  
    useHandleLibrary({
      excalidrawAPI,
@@ -163,7 +167,27 @@ index 9ba64e1..ffe2419 100644
      // TODO maybe remove this in several months (shipped: 24-03-11)
      migrationAdapter: LibraryLocalStorageMigrationAdapter,
    });
-@@ -573,7 +576,7 @@ const ExcalidrawWrapper = () => {
+ 
++  // 登录态变化 → 素材库跟随刷新（登录拉云端、登出回本地 IndexedDB）
++  // 这是 auth store 广播订阅的一部分：WorkspaceDialog 管场景、这里管素材库。
++  useEffect(() => {
++    const onAuthChanged = () => {
++      LibraryCloudAdapter.load().then((data) => {
++        if (data && excalidrawAPI) {
++          excalidrawAPI.updateLibrary({
++            libraryItems: data.libraryItems,
++          });
++        }
++      });
++    };
++    window.addEventListener("ws:auth-changed", onAuthChanged);
++    return () => window.removeEventListener("ws:auth-changed", onAuthChanged);
++  }, [excalidrawAPI]);
++
+   const [, forceRefresh] = useState(false);
+ 
+   useEffect(() => {
+@@ -573,7 +596,7 @@ const ExcalidrawWrapper = () => {
              ...localDataState,
              captureUpdate: CaptureUpdateAction.NEVER,
            });
@@ -172,7 +196,7 @@ index 9ba64e1..ffe2419 100644
              if (data) {
                excalidrawAPI.updateLibrary({
                  libraryItems: data.libraryItems,
-@@ -724,6 +727,9 @@ const ExcalidrawWrapper = () => {
+@@ -724,6 +747,9 @@ const ExcalidrawWrapper = () => {
          window.devicePixelRatio,
        );
      }
@@ -182,7 +206,7 @@ index 9ba64e1..ffe2419 100644
    };
  
    const [latestShareableLink, setLatestShareableLink] = useState<string | null>(
-@@ -862,41 +868,30 @@ const ExcalidrawWrapper = () => {
+@@ -862,41 +888,30 @@ const ExcalidrawWrapper = () => {
    }
  
    const ExcalidrawPlusCommand = {
@@ -201,7 +225,7 @@ index 9ba64e1..ffe2419 100644
 -        }/plus?utm_source=excalidraw&utm_medium=app&utm_content=command_palette`,
 -        "_blank",
 -      );
-+      window.dispatchEvent(new CustomEvent("ws:open-panel"));
++      openWorkspace();
      },
    };
    const ExcalidrawPlusAppCommand = {
@@ -235,11 +259,11 @@ index 9ba64e1..ffe2419 100644
 +    })(),
 +    keywords: ["login", "signin", "登录", "账号"],
 +    perform: () => {
-+      window.dispatchEvent(new CustomEvent("ws:open-panel"));
++      openSignIn();
      },
    };
  
-@@ -921,11 +916,10 @@ const ExcalidrawWrapper = () => {
+@@ -921,11 +936,10 @@ const ExcalidrawWrapper = () => {
                renderCustomUI: excalidrawAPI
                  ? (elements, appState, files) => {
                      return (
@@ -252,7 +276,7 @@ index 9ba64e1..ffe2419 100644
                          onError={(error) => {
                            excalidrawAPI?.updateScene({
                              appState: {
-@@ -960,9 +954,7 @@ const ExcalidrawWrapper = () => {
+@@ -960,9 +974,7 @@ const ExcalidrawWrapper = () => {
            return (
              <div className="excalidraw-ui-top-right">
                {excalidrawAPI?.getEditorInterface().formFactor === "desktop" && (
@@ -263,7 +287,7 @@ index 9ba64e1..ffe2419 100644
                )}
  
                {collabError.message && <CollabError collabError={collabError} />}
-@@ -1003,23 +995,61 @@ const ExcalidrawWrapper = () => {
+@@ -1003,23 +1015,62 @@ const ExcalidrawWrapper = () => {
            <OverwriteConfirmDialog.Actions.SaveToDisk />
            {excalidrawAPI && (
              <OverwriteConfirmDialog.Action
@@ -279,9 +303,9 @@ index 9ba64e1..ffe2419 100644
 +              title="Save as new canvas"
 +              actionLabel="Save"
 +              onClick={async () => {
-+                const token = localStorage.getItem("excalidraw-ws-token");
++                const token = getToken();
 +                if (!token) {
-+                  window.dispatchEvent(new CustomEvent("ws:open-panel"));
++                  openSignIn();
 +                  return;
 +                }
 +                try {
@@ -332,11 +356,12 @@ index 9ba64e1..ffe2419 100644
          <AppFooter onChange={() => excalidrawAPI?.refresh()} />
 -        {excalidrawAPI && <AIComponents excalidrawAPI={excalidrawAPI} />}
 +        <AIComponents />
-+        {excalidrawAPI && <WorkspaceComponents excalidrawAPI={excalidrawAPI} />}
++        {excalidrawAPI && <WorkspaceDialog excalidrawAPI={excalidrawAPI} />}
++        <SignInDialog />
  
          <TTDDialogTrigger />
          {isCollaborating && isOffline && (
-@@ -1060,8 +1090,6 @@ const ExcalidrawWrapper = () => {
+@@ -1060,8 +1111,6 @@ const ExcalidrawWrapper = () => {
            }}
          />
  
@@ -345,7 +370,7 @@ index 9ba64e1..ffe2419 100644
          {errorMessage && (
            <ErrorDialog onClose={() => setErrorMessage("")}>
              {errorMessage}
-@@ -1216,19 +1244,54 @@ const ExcalidrawWrapper = () => {
+@@ -1216,19 +1265,54 @@ const ExcalidrawWrapper = () => {
                : [ExcalidrawPlusCommand, ExcalidrawPlusAppCommand]),
  
              {
@@ -357,9 +382,9 @@ index 9ba64e1..ffe2419 100644
 -              keywords: ["plus", "export", "save", "backup"],
 +              keywords: ["cloud", "save", "save as", "backup", "workspace"],
                perform: () => {
-+                const token = localStorage.getItem("excalidraw-ws-token");
++                const token = getToken();
 +                if (!token) {
-+                  window.dispatchEvent(new CustomEvent("ws:open-panel"));
++                  openSignIn();
 +                  return;
 +                }
                  if (excalidrawAPI) {
@@ -671,10 +696,10 @@ index f4f2827..7905ba1 100644
    );
  };
 diff --git a/excalidraw-app/components/AppMainMenu.tsx b/excalidraw-app/components/AppMainMenu.tsx
-index ad34d7d..94acf0a 100644
+index ad34d7d..cda585c 100644
 --- a/excalidraw-app/components/AppMainMenu.tsx
 +++ b/excalidraw-app/components/AppMainMenu.tsx
-@@ -1,17 +1,18 @@
+@@ -1,19 +1,26 @@
  import {
 -  loginIcon,
 -  ExcalLogo,
@@ -698,19 +723,23 @@ index ad34d7d..94acf0a 100644
 +import type { Theme } from "@excalidraw/element/types";
  
  import { saveDebugState } from "./DebugCanvas";
++import {
++  clearAuth,
++  isSignedIn,
++  openSignIn,
++  openWorkspace,
++} from "./workspaceCloud";
  
-@@ -22,11 +23,42 @@ export const AppMainMenu: React.FC<{
+ export const AppMainMenu: React.FC<{
+   onCollabDialogOpen: () => any;
+@@ -22,11 +29,38 @@ export const AppMainMenu: React.FC<{
    theme: Theme | "system";
    refresh: () => void;
  }> = React.memo((props) => {
-+  const [signedIn, setSignedIn] = useState(
-+    () => !!localStorage.getItem("excalidraw-ws-token"),
-+  );
++  const [signedIn, setSignedIn] = useState(() => isSignedIn());
 +
 +  useEffect(() => {
-+    const onAuthChanged = () => {
-+      setSignedIn(!!localStorage.getItem("excalidraw-ws-token"));
-+    };
++    const onAuthChanged = () => setSignedIn(isSignedIn());
 +    window.addEventListener("ws:auth-changed", onAuthChanged);
 +    return () => window.removeEventListener("ws:auth-changed", onAuthChanged);
 +  }, []);
@@ -721,7 +750,7 @@ index ad34d7d..94acf0a 100644
 +      <MainMenu.Item
 +        icon={LoadIcon}
 +        onSelect={() => {
-+          window.dispatchEvent(new CustomEvent("ws:open-panel"));
++          openWorkspace();
 +        }}
 +        data-testid="load-button"
 +        shortcut={getShortcutFromShortcutName("loadScene")}
@@ -743,7 +772,7 @@ index ad34d7d..94acf0a 100644
        <MainMenu.DefaultItems.SaveAsImage />
        {props.isCollabEnabled && (
          <MainMenu.DefaultItems.LiveCollaborationTrigger
-@@ -37,27 +69,6 @@ export const AppMainMenu: React.FC<{
+@@ -37,27 +71,6 @@ export const AppMainMenu: React.FC<{
        <MainMenu.DefaultItems.CommandPalette className="highlighted" />
        <MainMenu.DefaultItems.SearchMenu />
        <MainMenu.DefaultItems.Help />
@@ -771,7 +800,7 @@ index ad34d7d..94acf0a 100644
        {isDevEnv() && (
          <MainMenu.Item
            icon={eyeIcon}
-@@ -78,10 +89,20 @@ export const AppMainMenu: React.FC<{
+@@ -78,10 +91,20 @@ export const AppMainMenu: React.FC<{
        <MainMenu.Separator />
        <MainMenu.DefaultItems.Preferences />
        <MainMenu.DefaultItems.ToggleTheme allowSystemTheme theme={props.theme} />
@@ -783,9 +812,9 @@ index ad34d7d..94acf0a 100644
 +        icon={signedIn ? logoutIcon : loginIcon}
 +        onSelect={() => {
 +          if (signedIn) {
-+            window.dispatchEvent(new CustomEvent("ws:signout"));
++            clearAuth();
 +          } else {
-+            window.dispatchEvent(new CustomEvent("ws:open-panel"));
++            openSignIn();
 +          }
 +        }}
 +        className={signedIn ? undefined : "highlighted"}
@@ -1031,16 +1060,22 @@ index d2f2a66..0000000
 -  );
 -};
 diff --git a/excalidraw-app/components/AppWelcomeScreen.tsx b/excalidraw-app/components/AppWelcomeScreen.tsx
-index 903af7a..27218a9 100644
+index 903af7a..3c5e933 100644
 --- a/excalidraw-app/components/AppWelcomeScreen.tsx
 +++ b/excalidraw-app/components/AppWelcomeScreen.tsx
-@@ -1,5 +1,4 @@
+@@ -1,10 +1,10 @@
  import { loginIcon } from "@excalidraw/excalidraw/components/icons";
 -import { POINTER_EVENTS } from "@excalidraw/common";
  import { useI18n } from "@excalidraw/excalidraw/i18n";
  import { WelcomeScreen } from "@excalidraw/excalidraw/index";
  import React from "react";
-@@ -18,17 +17,7 @@ export const AppWelcomeScreen: React.FC<{
+ 
+ import { isExcalidrawPlusSignedUser } from "../app_constants";
++import { openSignIn } from "./workspaceCloud";
+ 
+ export const AppWelcomeScreen: React.FC<{
+   onCollabDialogOpen: () => any;
+@@ -18,17 +18,7 @@ export const AppWelcomeScreen: React.FC<{
        .split(/(Excalidraw\+)/)
        .map((bit, idx) => {
          if (bit === "Excalidraw+") {
@@ -1059,7 +1094,7 @@ index 903af7a..27218a9 100644
          }
          return bit;
        });
-@@ -65,15 +54,15 @@ export const AppWelcomeScreen: React.FC<{
+@@ -65,15 +55,15 @@ export const AppWelcomeScreen: React.FC<{
              />
            )}
            {!isExcalidrawPlusSignedUser && (
@@ -1069,7 +1104,7 @@ index 903af7a..27218a9 100644
 -              }/plus?utm_source=excalidraw&utm_medium=app&utm_content=welcomeScreenGuest`}
 +            <WelcomeScreen.Center.MenuItem
 +              onSelect={() => {
-+                window.dispatchEvent(new CustomEvent("ws:open-panel"));
++                openSignIn();
 +              }}
                shortcut={null}
                icon={loginIcon}
@@ -1082,34 +1117,32 @@ index 903af7a..27218a9 100644
          </WelcomeScreen.Center.Menu>
        </WelcomeScreen.Center>
 diff --git a/excalidraw-app/components/ExcalidrawPlusPromoBanner.tsx b/excalidraw-app/components/ExcalidrawPlusPromoBanner.tsx
-index 8cd0aa1..0afa9be 100644
+index 8cd0aa1..1ac7e54 100644
 --- a/excalidraw-app/components/ExcalidrawPlusPromoBanner.tsx
 +++ b/excalidraw-app/components/ExcalidrawPlusPromoBanner.tsx
-@@ -1,22 +1,43 @@
+@@ -1,22 +1,46 @@
 -export const ExcalidrawPlusPromoBanner = ({
--  isSignedIn,
--}: {
--  isSignedIn: boolean;
--}) => {
 +import { useEffect, useState } from "react";
 +
 +import { UserAvatar } from "./UserAvatar";
-+
-+const TOKEN_KEY = "excalidraw-ws-token";
-+const USER_KEY = "excalidraw-ws-username";
++import {
++  getUsername,
+   isSignedIn,
+-}: {
+-  isSignedIn: boolean;
+-}) => {
++  openSignIn,
++  openWorkspace,
++} from "./workspaceCloud";
 +
 +export const ExcalidrawPlusPromoBanner = () => {
-+  const [username, setUsername] = useState<string>(
-+    () => localStorage.getItem(USER_KEY) || "",
-+  );
-+  const [signedIn, setSignedIn] = useState<boolean>(
-+    () => !!localStorage.getItem(TOKEN_KEY),
-+  );
++  const [username, setUsername] = useState<string>(() => getUsername() || "");
++  const [signedIn, setSignedIn] = useState<boolean>(() => isSignedIn());
 +
 +  useEffect(() => {
 +    const onAuthChanged = () => {
-+      setSignedIn(!!localStorage.getItem(TOKEN_KEY));
-+      setUsername(localStorage.getItem(USER_KEY) || "");
++      setSignedIn(isSignedIn());
++      setUsername(getUsername() || "");
 +    };
 +    window.addEventListener("ws:auth-changed", onAuthChanged);
 +    return () => window.removeEventListener("ws:auth-changed", onAuthChanged);
@@ -1130,7 +1163,11 @@ index 8cd0aa1..0afa9be 100644
 +      type="button"
        className="plus-banner"
 +      onClick={() => {
-+        window.dispatchEvent(new CustomEvent("ws:open-panel"));
++        if (signedIn) {
++          openWorkspace();
++        } else {
++          openSignIn();
++        }
 +      }}
      >
 -      Excalidraw+
@@ -1384,7 +1421,7 @@ index c91ee03..8218da7 100644
 +  "dependencies": {}
  }
 diff --git a/packages/excalidraw/components/CommandPalette/CommandPalette.tsx b/packages/excalidraw/components/CommandPalette/CommandPalette.tsx
-index a58c795..1b5c773 100644
+index a58c795..dc027f1 100644
 --- a/packages/excalidraw/components/CommandPalette/CommandPalette.tsx
 +++ b/packages/excalidraw/components/CommandPalette/CommandPalette.tsx
 @@ -28,7 +28,7 @@ import { getShortcutFromShortcutName } from "../../actions/shortcuts";
@@ -1432,7 +1469,7 @@ index a58c795..1b5c773 100644
            predicate: appProps.aiEnabled,
            perform: () => {
 +            if (!localStorage.getItem("excalidraw-ws-token")) {
-+              window.dispatchEvent(new CustomEvent("ws:open-panel"));
++              window.dispatchEvent(new CustomEvent("ws:open-signin"));
 +              return;
 +            }
              setAppState((state) => ({
@@ -1443,7 +1480,7 @@ index a58c795..1b5c773 100644
            predicate: appProps.aiEnabled,
            perform: () => {
 +            if (!localStorage.getItem("excalidraw-ws-token")) {
-+              window.dispatchEvent(new CustomEvent("ws:open-panel"));
++              window.dispatchEvent(new CustomEvent("ws:open-signin"));
 +              return;
 +            }
              setAppState((state) => ({
@@ -1486,7 +1523,7 @@ index 86bd4e2..1dee1cd 100644
        {t("labels.libraries")}
      </a>
 diff --git a/packages/excalidraw/components/MobileToolbar.tsx b/packages/excalidraw/components/MobileToolbar.tsx
-index 40fee29..980c918 100644
+index 40fee29..0228dfb 100644
 --- a/packages/excalidraw/components/MobileToolbar.tsx
 +++ b/packages/excalidraw/components/MobileToolbar.tsx
 @@ -313,7 +313,13 @@ export const MobileToolbar = ({ app, setAppState }: MobileToolbarProps) => {
@@ -1496,7 +1533,7 @@ index 40fee29..980c918 100644
 -            onSelect={() => app.setOpenDialog({ name: "ttd", tab: "mermaid" })}
 +            onSelect={() => {
 +              if (!localStorage.getItem("excalidraw-ws-token")) {
-+                window.dispatchEvent(new CustomEvent("ws:open-panel"));
++                window.dispatchEvent(new CustomEvent("ws:open-signin"));
 +                return;
 +              }
 +              app.setOpenDialog({ name: "ttd", tab: "mermaid" });
@@ -1511,7 +1548,7 @@ index 40fee29..980c918 100644
 -                onSelect={() => app.onMagicframeToolSelect()}
 +                onSelect={() => {
 +                  if (!localStorage.getItem("excalidraw-ws-token")) {
-+                    window.dispatchEvent(new CustomEvent("ws:open-panel"));
++                    window.dispatchEvent(new CustomEvent("ws:open-signin"));
 +                    return;
 +                  }
 +                  app.onMagicframeToolSelect();
@@ -1520,7 +1557,7 @@ index 40fee29..980c918 100644
                  data-testid="toolbar-magicframe"
                  badge={<DropdownMenu.Item.Badge>AI</DropdownMenu.Item.Badge>}
 diff --git a/packages/excalidraw/components/TTDDialog/TTDDialogTrigger.tsx b/packages/excalidraw/components/TTDDialog/TTDDialogTrigger.tsx
-index 9886d59..329c62d 100644
+index 9886d59..9ff72d2 100644
 --- a/packages/excalidraw/components/TTDDialog/TTDDialogTrigger.tsx
 +++ b/packages/excalidraw/components/TTDDialog/TTDDialogTrigger.tsx
 @@ -22,6 +22,11 @@ export const TTDDialogTrigger = ({
@@ -1529,14 +1566,14 @@ index 9886d59..329c62d 100644
          onSelect={() => {
 +          // Sign-in gate: AI features require login (self-hosted instance)
 +          if (!localStorage.getItem("excalidraw-ws-token")) {
-+            window.dispatchEvent(new CustomEvent("ws:open-panel"));
++            window.dispatchEvent(new CustomEvent("ws:open-signin"));
 +            return;
 +          }
            trackEvent("ai", "dialog open", "ttd");
            setAppState({ openDialog: { name: "ttd", tab: "text-to-diagram" } });
          }}
 diff --git a/packages/excalidraw/components/Toolbar.tsx b/packages/excalidraw/components/Toolbar.tsx
-index d5d692c..a30c73e 100644
+index d5d692c..75fe5f2 100644
 --- a/packages/excalidraw/components/Toolbar.tsx
 +++ b/packages/excalidraw/components/Toolbar.tsx
 @@ -163,7 +163,13 @@ const ExtraToolsDropdown = ({
@@ -1546,7 +1583,7 @@ index d5d692c..a30c73e 100644
 -          onSelect={() => app.setOpenDialog({ name: "ttd", tab: "mermaid" })}
 +          onSelect={() => {
 +            if (!localStorage.getItem("excalidraw-ws-token")) {
-+              window.dispatchEvent(new CustomEvent("ws:open-panel"));
++              window.dispatchEvent(new CustomEvent("ws:open-signin"));
 +              return;
 +            }
 +            app.setOpenDialog({ name: "ttd", tab: "mermaid" });
@@ -1561,7 +1598,7 @@ index d5d692c..a30c73e 100644
 -            onSelect={() => app.onMagicframeToolSelect()}
 +            onSelect={() => {
 +              if (!localStorage.getItem("excalidraw-ws-token")) {
-+                window.dispatchEvent(new CustomEvent("ws:open-panel"));
++                window.dispatchEvent(new CustomEvent("ws:open-signin"));
 +                return;
 +              }
 +              app.onMagicframeToolSelect();

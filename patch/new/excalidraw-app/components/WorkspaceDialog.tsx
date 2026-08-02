@@ -4,7 +4,6 @@ import { loadFromJSON } from "@excalidraw/excalidraw/data";
 import { Dialog } from "@excalidraw/excalidraw/components/Dialog";
 import DialogActionButton from "@excalidraw/excalidraw/components/DialogActionButton";
 import { IconButton } from "@excalidraw/excalidraw/components/IconButton";
-import { TextField } from "@excalidraw/excalidraw/components/TextField";
 import { removeIcon } from "@excalidraw/excalidraw/components/icons";
 
 import type {
@@ -15,18 +14,20 @@ import type {
 import {
   API_BASE,
   CURRENT_KEY,
-  TOKEN_KEY,
-  USER_KEY,
   autoSaveBlockedRef,
   displaySceneName,
+  getToken,
+  openSignIn,
   workspaceAutoSaveRef,
 } from "./workspaceCloud";
 
 import "./WorkspacePanel.scss";
 
 /**
- * Workspace 面板：登录 + 云场景（Open from cloud）
- * 全部用 Excalidraw 原生 Dialog 组件（风格与保存/导出对话框一致）
+ * Workspace 对话框：云场景列表（打开/删除/当前标记）+ Open file…
+ * 触发事件：ws:open-workspace（头像 / ☰ My Workspace / Open 云端区）
+ * 未登录时显示 Sign in 链接（ws:open-signin 打开登录对话框）。
+ * 登录表单已拆到 SignInDialog.tsx —— 本组件只关心"打开"动作。
  * 后端: /ws-api → localhost:3020 (excalidraw-workspace-backend)
  */
 
@@ -60,15 +61,14 @@ async function api<T = unknown>(
   return body as T;
 }
 
-export const WorkspaceComponents = ({
+export const WorkspaceDialog = ({
   excalidrawAPI,
 }: {
   excalidrawAPI: ExcalidrawImperativeAPI;
 }) => {
   const [open, setOpen] = useState(false);
-  const [token, setToken] = useState<string | null>(() =>
-    localStorage.getItem(TOKEN_KEY),
-  );
+  // 登录态单一事实源：auth store（workspaceCloud.ts），订阅 ws:auth-changed 刷新
+  const [token, setToken] = useState<string | null>(() => getToken());
   const [scenes, setScenes] = useState<SceneMeta[]>([]);
   // 当前绑定的云端场景（自动保存目标），跨刷新持久化
   const [currentSceneId, setCurrentSceneId] = useState<number | null>(() => {
@@ -81,13 +81,27 @@ export const WorkspaceComponents = ({
   });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [userInput, setUserInput] = useState("");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 最新画布内容缓存（Close 时立即保存用；onChange 同步更新）
   const lastElementsRef = useRef<{
     elements: readonly unknown[];
     appState: unknown;
   } | null>(null);
+
+  // 登录态订阅：登录/登出时刷新 token（场景列表在打开时按需加载）；
+  // 登出时解除场景绑定（画布内容保留，但不再自动保存到云端）
+  useEffect(() => {
+    const onAuthChanged = () => {
+      setToken(getToken());
+      if (!getToken()) {
+        setCurrentSceneId(null);
+        persistCurrent(null, "");
+        setScenes([]);
+      }
+    };
+    window.addEventListener("ws:auth-changed", onAuthChanged);
+    return () => window.removeEventListener("ws:auth-changed", onAuthChanged);
+  }, []);
 
   // 绑定关系跨刷新持久化
   const persistCurrent = (id: number | null, name: string) => {
@@ -241,61 +255,21 @@ export const WorkspaceComponents = ({
   }, [token, currentSceneId, loadScenes, excalidrawAPI]);
 
   useEffect(() => {
-    const openHandler = () => setOpen(true);
-    window.addEventListener("ws:open-panel", openHandler);
-    return () => window.removeEventListener("ws:open-panel", openHandler);
-  }, []);
+    const openHandler = () => {
+      setOpen(true);
+      if (getToken()) {
+        loadScenes();
+      }
+    };
+    window.addEventListener("ws:open-workspace", openHandler);
+    return () => window.removeEventListener("ws:open-workspace", openHandler);
+  }, [loadScenes]);
 
   useEffect(() => {
     if (open && token) {
       loadScenes();
     }
   }, [open, token, loadScenes]);
-
-  const login = async () => {
-    setBusy(true);
-    setError("");
-    try {
-      const usernameInput = userInput.trim();
-      if (!usernameInput) {
-        setError("Please enter your username");
-        return;
-      }
-      const data = await api<{ token: string; user: { username: string } }>(
-        "/api/auth/login",
-        {
-          method: "POST",
-          body: JSON.stringify({ username: usernameInput }),
-        },
-      );
-      localStorage.setItem(TOKEN_KEY, data.token);
-      localStorage.setItem(USER_KEY, data.user.username);
-      setToken(data.token);
-      window.dispatchEvent(new CustomEvent("ws:auth-changed"));
-      loadScenes();
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const logout = useCallback(() => {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(USER_KEY);
-    localStorage.removeItem(CURRENT_KEY);
-    setToken(null);
-    setCurrentSceneId(null);
-    setScenes([]);
-    window.dispatchEvent(new CustomEvent("ws:auth-changed"));
-  }, []);
-
-  // Sign out 由主菜单触发（已从 Open 对话框移出）
-  useEffect(() => {
-    const signoutHandler = () => logout();
-    window.addEventListener("ws:signout", signoutHandler);
-    return () => window.removeEventListener("ws:signout", signoutHandler);
-  }, [logout]);
 
   const openScene = async (scene: SceneMeta) => {
     setBusy(true);
@@ -345,23 +319,17 @@ export const WorkspaceComponents = ({
           <div className="WorkspacePanel__section">
             <div className="WorkspacePanel__sectionHeader">Open from cloud</div>
             {!token ? (
-              <div>
-                <TextField
-                  value={userInput}
-                  onChange={setUserInput}
-                  onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) =>
-                    e.key === "Enter" && login()
-                  }
-                  placeholder="Username"
-                  fullWidth
-                />
-                <div className="WorkspacePanel__actionsRow">
-                  <DialogActionButton
-                    label={busy ? "Signing in…" : "Sign in"}
-                    isLoading={busy}
-                    onClick={() => login()}
-                  />
-                </div>
+              <div className="WorkspacePanel__empty">
+                <span>
+                  Sign in to open your cloud canvases.{" "}
+                  <button
+                    type="button"
+                    className="WorkspacePanel__signInLink"
+                    onClick={() => openSignIn()}
+                  >
+                    Sign in
+                  </button>
+                </span>
               </div>
             ) : (
               <div>

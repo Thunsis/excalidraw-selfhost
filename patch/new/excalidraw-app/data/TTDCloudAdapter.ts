@@ -3,6 +3,7 @@ import { createStore, get, set } from "idb-keyval";
 import type { SavedChats } from "@excalidraw/excalidraw/components/TTDDialog/types";
 
 import { STORAGE_KEYS } from "../app_constants";
+import { getToken } from "../components/workspaceCloud";
 
 /**
  * TTD 聊天历史账号化存储 adapter。
@@ -23,11 +24,11 @@ export class TTDCloudAdapter {
   );
 
   private static isSignedIn(): boolean {
-    return !!localStorage.getItem("excalidraw-ws-token");
+    return !!getToken();
   }
 
   private static async loadFromCloud(): Promise<SavedChats> {
-    const token = localStorage.getItem("excalidraw-ws-token");
+    const token = getToken();
     if (!token) {
       return [];
     }
@@ -42,7 +43,7 @@ export class TTDCloudAdapter {
   }
 
   private static async saveToCloud(chats: SavedChats): Promise<void> {
-    const token = localStorage.getItem("excalidraw-ws-token");
+    const token = getToken();
     if (!token) {
       throw new Error("Not signed in");
     }

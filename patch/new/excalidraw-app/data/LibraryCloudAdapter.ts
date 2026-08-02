@@ -5,6 +5,7 @@ import type { LibraryPersistedData } from "@excalidraw/excalidraw/data/library";
 import type { MaybePromise } from "@excalidraw/common/utility-types";
 
 import { STORAGE_KEYS } from "../app_constants";
+import { getToken } from "../components/workspaceCloud";
 
 /**
  * Library 素材库账号化存储 adapter（实现 LibraryPersistenceAdapter 接口）。
@@ -24,11 +25,11 @@ export class LibraryCloudAdapter {
   );
 
   private static isSignedIn(): boolean {
-    return !!localStorage.getItem("excalidraw-ws-token");
+    return !!getToken();
   }
 
   private static async loadFromCloud(): Promise<LibraryPersistedData | null> {
-    const token = localStorage.getItem("excalidraw-ws-token");
+    const token = getToken();
     if (!token) {
       return null;
     }
@@ -52,7 +53,7 @@ export class LibraryCloudAdapter {
   private static cloudWriteChain: Promise<void> = Promise.resolve();
 
   private static async saveToCloud(data: LibraryPersistedData): Promise<void> {
-    const token = localStorage.getItem("excalidraw-ws-token");
+    const token = getToken();
     if (!token) {
       return;
     }
