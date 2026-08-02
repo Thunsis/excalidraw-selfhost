@@ -4,8 +4,8 @@
 #
 # 用法:
 #   cp .env.example .env   # 填你的配置
-#   ./install.sh           # 生成配置并安装/重启服务
-#   ./install.sh --dry-run # 只生成不安装
+#   ./scripts/install.sh           # 生成配置并安装/重启服务
+#   ./scripts/install.sh --dry-run # 只生成不安装
 #
 # 幂等：可重复执行。生成物在 deploy/generated/，launchd plist 在
 # ~/Library/LaunchAgents/（通过 symlink 指向生成物，便于版本追踪）。
@@ -142,7 +142,7 @@ fi
 
 if [[ "$DRY_RUN" == "--dry-run" ]]; then
   echo ""
-  echo "✅ 生成完成（dry-run，未安装）。检查 deploy/generated/ 后执行 ./install.sh"
+  echo "✅ 生成完成（dry-run，未安装）。检查 deploy/generated/ 后执行 ./scripts/install.sh"
   exit 0
 fi
 
