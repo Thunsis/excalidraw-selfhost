@@ -3,3 +3,4 @@ deploy/generated/
 node_modules/
 *.log
 apps/ws-server/data/
+docs/screenshots/
