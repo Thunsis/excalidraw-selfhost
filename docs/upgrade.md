@@ -1,6 +1,6 @@
 # Upgrade Guide
 
-Excalidraw upstream moves fast. The patch set in `frontend/patches/` is a
+Excalidraw upstream moves fast. The patch set in `patch/` is a
 snapshot against a pinned commit — upgrading is a **deliberate, quarterly**
 process, not something you chase weekly.
 
@@ -18,15 +18,16 @@ git checkout <new-tag>
 git stash pop
 
 # 3. Re-apply this repo's patches (conflicts are resolved by hand)
-git apply /path/to/excalidraw-selfhost/frontend/patches/custom.diff
-cp -r /path/to/excalidraw-selfhost/frontend/patches/new-files/ .
+git apply /path/to/excalidraw-selfhost/patch/excalidraw.patch
+cp -r /path/to/excalidraw-selfhost/patch/new/ .
 
 # 4. Resolve conflicts, rebuild, verify
-yarn build
+corepack yarn build
 curl -s -o /dev/null -w "%{http_code}" https://your.domain/
 
 # 5. Re-export the patch so the repo stays current
-git diff > /path/to/excalidraw-selfhost/frontend/patches/custom.diff
+cd /path/to/excalidraw-selfhost
+./scripts/apply-patch.sh /path/to/excalidraw --export
 ```
 
 ## Backends (ws / ai)
@@ -37,7 +38,7 @@ HTTP contract (`/api/*`, `/v1/ai/*`). Upgrade them whenever you like:
 ```bash
 cd excalidraw-selfhost
 git pull
-./scripts/install.sh          # regenerates launchd configs
+./scripts/install.sh          # regenerates launchd configs + symlinks
 for job in ws-backend ai-backend caddy cloudflared; do
   launchctl bootout gui/$(id -u)/com.excalidraw.$job 2>/dev/null
   launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.excalidraw.$job.plist
@@ -46,6 +47,20 @@ done
 
 > `launchctl kickstart -k` does **not** re-read the plist after a symlink
 > change — use `bootout` + `bootstrap` to load fresh config.
+
+## Data migration (if you had an older install)
+
+2026-08-02 the default data location moved from `~/.excalidraw-ws/data/`
+to `<repo>/apps/ws-server/data/` (gitignored). If you had an old install:
+
+```bash
+# stop ws-backend first, then move (don't copy while WAL is active)
+launchctl bootout gui/$(id -u)/com.excalidraw.ws-backend
+mkdir -p <repo>/apps/ws-server/data
+cp -R ~/.excalidraw-ws/data/. <repo>/apps/ws-server/data/
+cp ~/.excalidraw-ws/.jwt-secret <repo>/apps/ws-server/data/.jwt-secret
+# update WS_DATA_DIR in .env, re-run ./scripts/install.sh, bootstrap again
+```
 
 ## Verifying after upgrade
 

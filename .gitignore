@@ -2,4 +2,4 @@
 deploy/generated/
 node_modules/
 *.log
-backend/data/
+apps/ws-server/data/

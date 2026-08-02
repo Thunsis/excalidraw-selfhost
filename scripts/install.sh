@@ -36,7 +36,7 @@ set +a
 : "${LAUNCH_AGENTS_DIR:=$HOME/Library/LaunchAgents}"
 : "${CLOUDFLARED_DIR:=$HOME/.cloudflared}"
 : "${EXCALIDRAW_REPO_DIR:=$REPO_DIR/../excalidraw}"
-: "${WS_DATA_DIR:=$REPO_DIR/server/workspace/data}"
+: "${WS_DATA_DIR:=$REPO_DIR/apps/ws-server/data}"
 : "${JWT_SECRET_FILE:=$WS_DATA_DIR/.jwt-secret}"
 : "${OPENAI_CONFIG_FILE:=$HOME/.hermes/config.yaml}"
 : "${MODEL:=deepseek-v4-flash}"
@@ -45,6 +45,7 @@ set +a
 : "${ACCESS_LOG:=/tmp/caddy-access.log}"
 
 mkdir -p "$GENERATED"
+mkdir -p "$WS_DATA_DIR"   # 数据目录（个人数据，gitignored；server.js 也会自动创建）
 
 echo "=========================================="
 echo " excalidraw-selfhost 配置生成"
@@ -82,7 +83,7 @@ sed -e "s|__CADDY_PORT__|$CADDY_PORT|g" \
     -e "s|__WS_PORT__|$WS_PORT|g" \
     -e "s|__AI_PORT__|$AI_PORT|g" \
     -e "s|__ACCESS_LOG__|$ACCESS_LOG|g" \
-    "$REPO_DIR/deploy/templates/Caddyfile.template" > "$GENERATED/Caddyfile"
+    "$REPO_DIR/deploy/caddy/Caddyfile.template" > "$GENERATED/Caddyfile"
 echo "✅ Caddyfile"
 
 # ── 生成 tunnel.yml ────────────────────────────────────────
@@ -129,11 +130,11 @@ gen_plist() {
   echo "✅ $(basename "$output")"
 }
 
-gen_plist "$REPO_DIR/deploy/templates/com.excalidraw.ws-backend.plist.template" "$GENERATED/com.excalidraw.ws-backend.plist"
-gen_plist "$REPO_DIR/deploy/templates/com.excalidraw.ai-backend.plist.template" "$GENERATED/com.excalidraw.ai-backend.plist"
-gen_plist "$REPO_DIR/deploy/templates/com.excalidraw.caddy.plist.template" "$GENERATED/com.excalidraw.caddy.plist"
+gen_plist "$REPO_DIR/deploy/launchd/com.excalidraw.ws-backend.plist.template" "$GENERATED/com.excalidraw.ws-backend.plist"
+gen_plist "$REPO_DIR/deploy/launchd/com.excalidraw.ai-backend.plist.template" "$GENERATED/com.excalidraw.ai-backend.plist"
+gen_plist "$REPO_DIR/deploy/launchd/com.excalidraw.caddy.plist.template" "$GENERATED/com.excalidraw.caddy.plist"
 if [[ -n "${CLOUDFLARE_TUNNEL_ID:-}" ]]; then
-  gen_plist "$REPO_DIR/deploy/templates/com.excalidraw.cloudflared.plist.template" "$GENERATED/com.excalidraw.cloudflared.plist"
+  gen_plist "$REPO_DIR/deploy/launchd/com.excalidraw.cloudflared.plist.template" "$GENERATED/com.excalidraw.cloudflared.plist"
 else
   rm -f "$GENERATED/com.excalidraw.cloudflared.plist"
   echo "⏭️  cloudflared plist 跳过"
@@ -160,6 +161,18 @@ for job in ws-backend ai-backend caddy cloudflared; do
   ln -sfn "$src" "$dst"
   echo "🔗 $job plist -> $dst"
 done
+
+# ── 同步 Caddyfile / tunnel.yml 到 ~/.cloudflared（symlink）──
+# 单源：实体只在 deploy/generated/，运行位只是链接。
+mkdir -p "$CLOUDFLARED_DIR"
+if [[ -f "$GENERATED/Caddyfile" ]]; then
+  ln -sfn "$GENERATED/Caddyfile" "$CLOUDFLARED_DIR/excalidraw-Caddyfile"
+  echo "🔗 Caddyfile -> $CLOUDFLARED_DIR/excalidraw-Caddyfile"
+fi
+if [[ -f "$GENERATED/tunnel.yml" ]]; then
+  ln -sfn "$GENERATED/tunnel.yml" "$CLOUDFLARED_DIR/excalidraw-tunnel.yml"
+  echo "🔗 tunnel.yml -> $CLOUDFLARED_DIR/excalidraw-tunnel.yml"
+fi
 
 echo ""
 echo "服务安装完成。如需立即生效："

@@ -1,64 +1,49 @@
 #!/usr/bin/env bash
 # ============================================================
-# build-frontend.sh - one-shot frontend build from patches
+# build-frontend.sh - single-source frontend build
 #
-# Single-source workflow: patches are the ONLY truth.
-#   1. restore excalidraw repo to pristine upstream
-#   2. apply patches (custom.diff + new-files)
-#   3. yarn build -> excalidraw-app/build/ (served by caddy)
-#   4. restore again (clean tree = reproducible, patch-driven)
+# The excalidraw repo stays pristine (0 uncommitted changes).
+# This script: restore -> apply patches -> build -> restore.
 #
 # Usage:
-#   ./build-frontend.sh /path/to/excalidraw          # apply + build + restore
-#   ./build-frontend.sh /path/to/excalidraw --keep   # apply + build, keep tree dirty
-#   ./build-frontend.sh /path/to/excalidraw --apply  # only apply (dev work)
+#   ./build-frontend.sh /path/to/excalidraw          # default: build
+#   ./build-frontend.sh /path/to/excalidraw --apply  # patch only (dev)
+#   ./build-frontend.sh /path/to/excalidraw --keep   # build, keep patches applied
 # ============================================================
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TARGET="${1:?usage: ./build-frontend.sh /path/to/excalidraw [--keep|--apply]}"
-MODE="${2:-}"
+TARGET="${1:?usage: ./build-frontend.sh /path/to/excalidraw [--apply|--keep]}"
+MODE="${2:-default}"
 
 if [[ ! -d "$TARGET/.git" ]]; then
   echo "ERROR: $TARGET is not a git repo"
   exit 1
 fi
 
-restore_clean() {
-  echo "→ restoring $TARGET to pristine upstream ..."
-  git -C "$TARGET" checkout -- .
-  git -C "$TARGET" clean -fd > /dev/null 2>&1 || true
-}
-
-case "$MODE" in
-  --apply)
-    "$SCRIPT_DIR/apply-patches.sh" "$TARGET"
-    echo ""
-    echo "Tree patched. Do your dev work, then re-export:"
-    echo "  $SCRIPT_DIR/apply-patches.sh $TARGET --export"
-    echo "  $SCRIPT_DIR/build-frontend.sh $TARGET"
-    exit 0
-    ;;
-  --keep)
-    restore_clean
-    "$SCRIPT_DIR/apply-patches.sh" "$TARGET"
-    ;;
-  *)
-    restore_clean
-    "$SCRIPT_DIR/apply-patches.sh" "$TARGET"
-    ;;
-esac
-
-echo "→ building ..."
 cd "$TARGET"
-corepack yarn build 2>&1 | tail -3
-echo "✅ build done"
 
-if [[ "$MODE" != "--keep" ]]; then
-  restore_clean
-  echo "✅ tree restored to pristine (patches remain the single source of truth)"
+if [[ "$MODE" == "--apply" ]]; then
+  "$SCRIPT_DIR/apply-patch.sh" "$TARGET"
+  exit 0
+fi
+
+echo "== 1/4 restore upstream =="
+git checkout -- . && git clean -fd > /dev/null 2>&1 || true
+
+echo "== 2/4 apply patches =="
+"$SCRIPT_DIR/apply-patch.sh" "$TARGET"
+
+echo "== 3/4 build =="
+# corepack yarn: yarn not on PATH, must use corepack (PATH includes /opt/homebrew/bin)
+corepack yarn build
+
+if [[ "$MODE" == "--keep" ]]; then
+  echo "== 4/4 keep (patches remain applied for dev) =="
+else
+  echo "== 4/4 restore (repo back to pristine) =="
+  git checkout -- . && git clean -fd > /dev/null 2>&1 || true
 fi
 
 echo ""
-echo "Verify:"
-echo "  curl -s -o /dev/null -w '%{http_code}' https://your.domain/"
+echo "Done. build/ updated — caddy serves it directly (no restart needed)."

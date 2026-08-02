@@ -1,10 +1,11 @@
 # excalidraw-selfhost
 
-**Self-hosted Excalidraw+ alternative** — 登录、云场景、云素材库、AI 画图，全部自托管。
+**Self-hosted Excalidraw+ alternative** — 登录、云场景、云素材库、AI 画图，全部自托管，**禁止商用**（PolyForm Noncommercial 1.0.0）。
 
 A drop-in self-hosted backend + frontend patches for [Excalidraw](https://github.com/excalidraw/excalidraw) that gives you the **Excalidraw+ experience** (sign in, cloud scenes, cloud library, AI text-to-diagram) **without the subscription** — data stays on your machine.
 
----
+> **License**: PolyForm Noncommercial 1.0.0 — personal / non-commercial use free.
+> Note: the patched Excalidraw frontend still contains MIT-licensed upstream code.
 
 ## Why
 
@@ -31,13 +32,13 @@ Existing self-host projects focus on **real-time collaboration**. This project f
                                           ▼                    ▼                    ▼
                                 ┌────────────────┐   ┌────────────────┐   ┌────────────────┐
                                 │ /ws-api → 3020 │   │ /ai-proxy→3016 │   │ build/ (static)│
-                                │ ws-backend     │   │ ai-backend     │   │ frontend       │
-                                │ (Express+SQLite)│  │ (opencode-go)  │   │                │
+                                │ ws-server      │   │ ai-server      │   │ frontend       │
+                                │ (Express+SQLite)│  │ (opencode-go)  │   │ (patched)      │
                                 └────────────────┘   └────────────────┘   └────────────────┘
 ```
 
-- **ws-backend** (3020): JWT auth, scenes CRUD (`/api/scenes`), per-user key-value data (`/api/user-data/*` — library, TTD chats), share links. SQLite, zero config.
-- **ai-backend** (3016): SSE proxy for Excalidraw's Text-to-Diagram → any OpenAI-compatible endpoint (default opencode.ai, model `deepseek-v4-flash`).
+- **ws-server** (3020): JWT auth, scenes CRUD (`/api/scenes`), per-user key-value data (`/api/user-data/*` — library, TTD chats), share links. SQLite, zero config.
+- **ai-server** (3016): SSE proxy for Excalidraw's Text-to-Diagram → any OpenAI-compatible endpoint (default opencode.ai, model `deepseek-v4-flash`).
 - **caddy** (3001): serves the built frontend + reverse-proxies `/ws-api` and `/ai-proxy`. HTTPS with local (self-signed) certs so cloudflared uses HTTP/2.
 - **cloudflared**: optional — exposes your instance via a Cloudflare Tunnel (no open ports, no DNS setup).
 
@@ -49,53 +50,54 @@ Requires: macOS (launchd), Node ≥ 24 (better-sqlite3 ABI), a local clone of `e
 git clone https://github.com/Thunsis/excalidraw-selfhost.git
 cd excalidraw-selfhost
 
-cp .env.example .env        # fill in your values
-./scripts/install.sh --dry-run  # generates deploy/generated/* (check them)
-./scripts/install.sh            # symlinks launchd agents, ready to bootstrap
+cp .env.example .env            # fill in your values
+make install --dry-run          # generates deploy/generated/* (check them)
+make install                    # symlinks launchd agents + configs, ready to bootstrap
 ```
 
-### Frontend (patches)
+### Frontend (patch)
 
-The frontend customization lives in `frontend/patches/`:
+The frontend customization lives in `patch/` — a delta against a **pinned upstream commit** (`1acf66e`):
 
 ```bash
-# in your excalidraw monorepo clone (pinned: v0.18.x / commit 1acf66e)
+# in your excalidraw monorepo clone (pinned: 1acf66e)
 cd /path/to/excalidraw
-
-git apply /path/to/excalidraw-selfhost/frontend/patches/custom.diff
-cp -r /path/to/excalidraw-selfhost/frontend/patches/new-files/ .
-
-yarn build                 # produces excalidraw-app/build/
+git apply /path/to/excalidraw-selfhost/patch/excalidraw.patch
+cp -R /path/to/excalidraw-selfhost/patch/new/ .
+corepack yarn build             # produces excalidraw-app/build/
 ```
 
-The patch set is a **snapshot against upstream commit `1acf66e`** — if upstream moved on, expect conflicts; resolve, rebuild, and re-export with:
+Single-source workflow: patches are the only truth. After dev changes, re-export:
 
 ```bash
-git diff > custom.diff     # after your changes, re-export the patch
+make patch-export               # re-export patches from a modified tree
+make build                      # restore -> patch -> build -> restore
 ```
-
-> The patches pin Excalidraw to that commit for reproducible builds. Upgrading is a deliberate, documented process (see `docs/upgrade.md`).
 
 ### Auth model
 
 Simple by design: **username IS the credential** (no password, registration closed). Suitable for private/self-hosted use. **Do not expose to the public internet** without adding real auth.
 
+## Data & privacy
+
+- **All user data lives in SQLite** at `WS_DATA_DIR` (default `<repo>/apps/ws-server/data/`) — scenes, library, chat history, users. This directory is **gitignored** (`.gitignore: apps/ws-server/data/`) — your drawings never enter the repo or GitHub.
+- JWT secret is auto-generated on first run at `<WS_DATA_DIR>/.jwt-secret` (mode 600) and persists across restarts.
+- `make backup` — WAL-safe snapshot to `apps/ws-server/data/backups/`, keeps last 7.
+- `make check` — healthcheck: ports + launchd + db integrity (cron-friendly, silent when healthy).
+
 ## Project layout
 
 ```
-server/workspace/  ws-backend (Express + better-sqlite3 + JWT)
-server/ai/         AI text-to-diagram SSE proxy
-frontend/patches/  Excalidraw frontend customization (diff + new files)
-deploy/templates/  plist + Caddyfile templates (rendered by scripts/install.sh)
-scripts/           install / apply-patches / build-frontend (idempotent)
-docs/              upgrade guide
+apps/            deployable applications (each with its own README)
+  ws-server/     cloud workspace backend (Express + better-sqlite3 + JWT)
+  ai-server/     AI text-to-diagram SSE proxy
+patch/           frontend customization delta (excalidraw.patch + new/)
+deploy/          platform-specific assembly (launchd / caddy / cloudflared)
+scripts/         ops toolchain (install / apply-patch / build / backup / healthcheck)
+docs/            architecture decisions, upgrade SOP, troubleshooting
+Makefile         unified command entry (make install / build / backup / check / doctor)
 ```
-
-## Data & backup
-
-- SQLite at `WS_DATA_DIR` (default `server/workspace/data/workspace.db`) — scenes, library, chat history, users.
-- Backup while running: `sqlite3 workspace.db ".backup 'backup-$(date +%F).db'"` (WAL-safe).
 
 ## License
 
-MIT — code here is independent of Excalidraw's MIT license; patches are against Excalidraw (MIT) upstream.
+PolyForm Noncommercial 1.0.0 — see [LICENSE](LICENSE). Personal and non-commercial use is free; commercial use requires permission. The frontend patch is applied against Excalidraw (MIT) — upstream code remains MIT-licensed.

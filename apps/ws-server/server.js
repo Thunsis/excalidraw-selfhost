@@ -3,8 +3,8 @@
  * Excalidraw 自部署 workspace 后端
  * 登录 + 场景云保存（SQLite + JWT）
  *
- * 端口: 3020（前端通过 Vite proxy /ws-api 访问，同源免 CORS）
- * 数据库: ~/.excalidraw-ws/data/workspace.db
+ * 端口: 3020（前端通过 caddy 反代 /ws-api 访问，同源免 CORS）
+ * 数据库: WS_DATA_DIR 环境变量指向（默认 <repo>/apps/ws-server/data/workspace.db）
  */
 const path = require("path");
 const fs = require("fs");
