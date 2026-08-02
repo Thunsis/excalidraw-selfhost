@@ -15,6 +15,12 @@ https://localhost:__CADDY_PORT__, https://__DOMAIN__:__CADDY_PORT____DOMAIN_ALT_
   root * __EXCALIDRAW_BUILD_DIR__
   encode gzip
 
+  # HTTP 明文（外部 http:// 经 tunnel 进来，Cf-Visitor scheme=http）→ 301 强制 HTTPS
+  @plain {
+    header Cf-Visitor "*\"scheme\":\"http\"*"
+  }
+  redir @plain https://{host}{uri} permanent
+
   handle /ws-api/* {
     uri strip_prefix /ws-api
     reverse_proxy localhost:__WS_PORT__
@@ -32,5 +38,7 @@ https://localhost:__CADDY_PORT__, https://__DOMAIN__:__CADDY_PORT____DOMAIN_ALT_
   header {
     # 防止 Cloudflare 边缘缓存空/旧响应（曾导致白屏复发）
     Cache-Control "no-cache"
+    # HSTS：浏览器收到一次 HTTPS 响应后强制后续走 HTTPS
+    Strict-Transport-Security "max-age=31536000; includeSubDomains"
   }
 }
