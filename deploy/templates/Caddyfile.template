@@ -1,0 +1,36 @@
+{
+  local_certs
+  log {
+    output file __ACCESS_LOG__
+  }
+}
+
+# Self-hosted Excalidraw production serving.
+# HTTPS + HTTP/2 (self-signed) so cloudflared talks HTTP/2 to the origin —
+# avoids the HTTP/1.1 keepalive pool corruption that caused intermittent
+# white screens over the tunnel.
+https://localhost:__CADDY_PORT__, https://__DOMAIN__:__CADDY_PORT____DOMAIN_ALT_BLOCK__ {
+  tls internal
+  log
+  root * __EXCALIDRAW_BUILD_DIR__
+  encode gzip
+
+  handle /ws-api/* {
+    uri strip_prefix /ws-api
+    reverse_proxy localhost:__WS_PORT__
+  }
+
+  handle /ai-proxy/* {
+    uri strip_prefix /ai-proxy
+    reverse_proxy localhost:__AI_PORT__
+  }
+
+  handle {
+    file_server
+  }
+
+  header {
+    # 防止 Cloudflare 边缘缓存空/旧响应（曾导致白屏复发）
+    Cache-Control "no-cache"
+  }
+}

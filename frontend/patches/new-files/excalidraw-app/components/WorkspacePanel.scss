@@ -1,0 +1,114 @@
+/* Open from cloud — 排版对齐 Excalidraw 原生体系：
+   参考 CommandPalette（列表行）与 Dialog（标题/按钮）的字号与间距。
+   字号：Dialog 标题 1.25rem / 区块标题 1rem(600) / 主体 0.875rem / 次级 0.75rem */
+
+.WorkspacePanel__error {
+  margin-top: 0.75rem;
+  color: var(--color-danger);
+  font-size: 0.875rem;
+}
+
+.WorkspacePanel__actionsRow {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.75rem;
+}
+
+.WorkspacePanel__section + .WorkspacePanel__section {
+  border-top: 1px solid var(--dialog-border-color);
+  padding-top: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.WorkspacePanel__sectionHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+  /* 原生区块标题（参考 CommandPalette .command-category-title） */
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--popup-text-color);
+}
+
+.WorkspacePanel__empty {
+  color: var(--color-gray-50);
+  font-size: 0.875rem;
+  padding: 0.5rem 0;
+}
+
+.WorkspacePanel__scene {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  margin: 0 -0.5rem;
+  border-radius: var(--border-radius-lg);
+  transition: background-color 150ms ease;
+  cursor: pointer;
+  outline: none;
+
+  /* 全站弹出层/菜单悬停惯例（DropdownMenu 同款） */
+  &:hover {
+    background-color: var(--button-hover-bg);
+  }
+
+  &:focus-visible {
+    box-shadow: 0 0 0 2px var(--color-primary);
+  }
+
+  & + & {
+    margin-top: 0.25rem;
+  }
+}
+
+.WorkspacePanel__sceneInfo {
+  min-width: 0;
+  flex: 1;
+}
+
+.WorkspacePanel__sceneName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: var(--popup-text-color);
+}
+
+.WorkspacePanel__sceneMeta {
+  color: var(--color-gray-40);
+  font-size: 0.75rem;
+  line-height: 1.4;
+  margin-top: 2px;
+}
+
+.WorkspacePanel__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+/* 删除图标（hover-reveal 惯例，Notion/Linear 同款）：
+   静态不可见 → 不干扰名字阅读；hover 行时淡入右侧（中性灰，仅暗示存在）；
+   只有 hover 到图标本身才变红 + 浅红圆底（危险语义）。
+   视觉语言完全独立：行背景变亮 = 可打开，图标红色 = 可删除，
+   打开场景时图标不会被点亮（点到图标才触发红色态）。 */
+.WorkspacePanel__remove {
+  color: var(--color-gray-40);
+  border-radius: var(--border-radius-md);
+  opacity: 0;
+  transition: opacity 150ms ease;
+
+  &:hover {
+    color: var(--color-danger);
+    background-color: var(--color-danger-background);
+  }
+}
+
+.WorkspacePanel__scene:hover .WorkspacePanel__remove,
+.WorkspacePanel__scene:focus-within .WorkspacePanel__remove {
+  opacity: 1;
+}

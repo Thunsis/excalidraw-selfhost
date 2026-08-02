@@ -1,0 +1,16 @@
+{
+  "name": "excalidraw-workspace-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Excalidraw 自部署 workspace 后端：登录 + 场景云保存（SQLite + JWT）",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.3.0",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2"
+  }
+}

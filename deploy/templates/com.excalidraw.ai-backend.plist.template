@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.excalidraw.ai-backend</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/env</string>
+        <string>node</string>
+        <string>__REPO_DIR__/ai-backend/server.js</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/tmp/excalidraw-ai-backend.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/excalidraw-ai-backend.err</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>PORT</key>
+        <string>__AI_PORT__</string>
+        <key>OPENAI_API_KEY</key>
+        <string>__OPENAI_API_KEY__</string>
+        <key>OPENAI_CONFIG_FILE</key>
+        <string>__OPENAI_CONFIG_FILE__</string>
+        <key>MODEL</key>
+        <string>__MODEL__</string>
+        <key>OPENAI_BASE</key>
+        <string>__OPENAI_BASE__</string>
+    </dict>
+</dict>
+</plist>
