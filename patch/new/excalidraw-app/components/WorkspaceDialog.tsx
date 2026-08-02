@@ -88,21 +88,6 @@ export const WorkspaceDialog = ({
     appState: unknown;
   } | null>(null);
 
-  // 登录态订阅：登录/登出时刷新 token（场景列表在打开时按需加载）；
-  // 登出时解除场景绑定（画布内容保留，但不再自动保存到云端）
-  useEffect(() => {
-    const onAuthChanged = () => {
-      setToken(getToken());
-      if (!getToken()) {
-        setCurrentSceneId(null);
-        persistCurrent(null, "");
-        setScenes([]);
-      }
-    };
-    window.addEventListener("ws:auth-changed", onAuthChanged);
-    return () => window.removeEventListener("ws:auth-changed", onAuthChanged);
-  }, []);
-
   // 绑定关系跨刷新持久化
   const persistCurrent = (id: number | null, name: string) => {
     if (id == null) {
@@ -263,6 +248,24 @@ export const WorkspaceDialog = ({
     };
     window.addEventListener("ws:open-workspace", openHandler);
     return () => window.removeEventListener("ws:open-workspace", openHandler);
+  }, [loadScenes]);
+
+  // 登录态订阅：登录/登出时刷新 token（场景列表在打开时按需加载）；
+  // 登出时解除场景绑定（画布内容保留，但不再自动保存到云端）；
+  // 登录时立即刷新列表——避免 "登录后马上打开 Open" 看到空列表的时序问题
+  useEffect(() => {
+    const onAuthChanged = () => {
+      setToken(getToken());
+      if (!getToken()) {
+        setCurrentSceneId(null);
+        persistCurrent(null, "");
+        setScenes([]);
+      } else {
+        loadScenes();
+      }
+    };
+    window.addEventListener("ws:auth-changed", onAuthChanged);
+    return () => window.removeEventListener("ws:auth-changed", onAuthChanged);
   }, [loadScenes]);
 
   useEffect(() => {
