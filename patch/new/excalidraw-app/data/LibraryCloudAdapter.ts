@@ -51,15 +51,32 @@ export class LibraryCloudAdapter {
   }
 
   private static cloudWriteChain: Promise<void> = Promise.resolve();
+  // 变更检测：library 数据序列化后与上次推送相同则跳过云写——
+  // 素材库可达数百 KB，移动网络下每次全量 PUT 会阻塞连接（实测 767KB ≈ 24s），
+  // 用户在此期间发起的保存请求会超时失败。只在数据真正变化时才上传。
+  private static lastPushedSerialized: string | null = null;
 
   private static async saveToCloud(data: LibraryPersistedData): Promise<void> {
     const token = getToken();
     if (!token) {
       return;
     }
+    let serialized: string;
+    try {
+      serialized = JSON.stringify(data);
+    } catch {
+      return;
+    }
+    if (LibraryCloudAdapter.lastPushedSerialized === serialized) {
+      return; // 无变化，跳过上传
+    }
     // 串行化云写入：避免多次 save 并发时乱序覆盖（旧的先到、新的后到导致丢数据）
     LibraryCloudAdapter.cloudWriteChain = LibraryCloudAdapter.cloudWriteChain.then(
       async () => {
+        // 链上再查一次：排队期间若已有等价写入，跳过本次
+        if (LibraryCloudAdapter.lastPushedSerialized === serialized) {
+          return;
+        }
         try {
           const res = await fetch("/ws-api/api/user-data/library", {
             method: "PUT",
@@ -69,7 +86,9 @@ export class LibraryCloudAdapter {
             },
             body: JSON.stringify({ value: data }),
           });
-          if (!res.ok) {
+          if (res.ok) {
+            LibraryCloudAdapter.lastPushedSerialized = serialized;
+          } else {
             // 云写入失败不静默吞掉：本地已保存，但需要可见告警以便排查
             console.warn(
               `[LibraryCloudAdapter] cloud save failed: HTTP ${res.status}`,

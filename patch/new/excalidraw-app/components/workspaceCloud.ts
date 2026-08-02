@@ -144,7 +144,7 @@ export const renameSceneWithAI = async (
   elements: readonly unknown[],
   timestamp: string,
 ): Promise<void> => {
-  const token = localStorage.getItem(TOKEN_KEY);
+  const token = getToken();
   if (!token) {
     return;
   }
