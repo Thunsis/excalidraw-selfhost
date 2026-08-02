@@ -20,6 +20,7 @@
   <a href="#features">Features</a> ·
   <a href="#quick-start">Quick Start</a> ·
   <a href="#architecture">Architecture</a> ·
+  <a href="#ux--auth">UX & Auth</a> ·
   <a href="#project-layout">Layout</a> ·
   <a href="#data--privacy">Privacy</a> ·
   <a href="#faq">FAQ</a> ·
@@ -43,12 +44,14 @@ Existing self-host projects (alswl/excalidraw-collaboration et al.) focus on **r
 | **Cloud scenes** (per-user, SQLite) | ✅ | ❌ | ✅ |
 | **Cloud library sync** | ✅ | ❌ | ✅ |
 | **AI text-to-diagram** (self-hosted) | ✅ | ❌ | ✅ |
+| **HTTPS by default** (auto-redirect + HSTS) | ✅ | ❌ | ✅ |
 | Real-time collaboration | ❌ (out of scope) | ✅ | ✅ |
 | **Data ownership** | ✅ 100% | ✅ | ❌ |
 
 > **Scope**: this is a **personal cloud** tool — one user's drawings, library & AI, synced across devices, fully owned. Real-time multi-user collaboration is deliberately out of scope.
 
 - **Single-source monorepo** — the upstream Excalidraw repo stays pristine; customization lives as a versioned patch set (`patch/`), applied at build time.
+- **Clean UX architecture** — login and workspace-open are decoupled into two intent events and two dialogs, all driven by one auth store.
 - **Zero-config backends** — Express + SQLite; no external services required.
 - **WAL-safe backups & healthcheck** — `make backup`, `make check`, cron-friendly.
 - **Tunnel-ready** — Cloudflare Tunnel support for private HTTPS access without opening ports.
@@ -100,23 +103,71 @@ Deliberately simple: **username IS the credential** — no passwords, registrati
 
 ## Architecture
 
-```
-┌─────────────┐   https    ┌──────────────┐   HTTP/2   ┌───────────────┐
-│   Browser   │ ─────────▶ │ cloudflared  │ ─────────▶ │ caddy (3001)  │
-└─────────────┘   tunnel   └──────────────┘            └───────┬───────┘
-                                          ┌────────────────────┼────────────────────┐
-                                          ▼                    ▼                    ▼
-                                ┌────────────────┐   ┌────────────────┐   ┌────────────────┐
-                                │ /ws-api → 3020 │   │ /ai-proxy→3016 │   │ build/ (static)│
-                                │ ws-server      │   │ ai-server      │   │ frontend       │
-                                │ (Express+SQLite)│  │ (SSE proxy)    │   │ (patched)      │
-                                └────────────────┘   └────────────────┘   └────────────────┘
+```mermaid
+flowchart LR
+    B["Browser"] -->|"HTTPS · tunnel"| CF["cloudflared"]
+    CF -->|"HTTP/2 (self-signed)"| C["caddy :3001"]
+    C -->|"/ws-api"| WS["ws-server :3020<br/>Express + better-sqlite3<br/>JWT · scenes · library · chats"]
+    C -->|"/ai-proxy"| AI["ai-server :3016<br/>SSE proxy<br/>zero-dependency"]
+    C -->|"static"| F["build/<br/>patched frontend"]
+    WS --> DB[("workspace.db<br/>per-user rows")]
+    AI --> LLM["any OpenAI-compatible endpoint<br/>(default deepseek-v4-flash)"]
 ```
 
 - **ws-server** (3020) — JWT auth, scenes CRUD, per-user key-value data (library, AI chats), share links. Express + better-sqlite3.
 - **ai-server** (3016) — SSE proxy for Excalidraw's Text-to-Diagram → any OpenAI-compatible endpoint (default `deepseek-v4-flash` via opencode.ai).
-- **caddy** (3001) — serves the patched frontend build + reverse-proxies `/ws-api` and `/ai-proxy`. Self-signed HTTPS for HTTP/2.
+- **caddy** (3001) — serves the patched frontend build + reverse-proxies `/ws-api` and `/ai-proxy`. Self-signed HTTPS for HTTP/2, **auto-redirects plain HTTP to HTTPS** (via `Cf-Visitor`) and sends **HSTS** so browsers pin the secure connection.
 - **cloudflared** — optional Cloudflare Tunnel: no open ports, no DNS setup.
+
+## UX & Auth
+
+The frontend's cloud UX is built on three deliberate design decisions.
+
+### 1. One auth store — the single source of truth
+
+All token reads go through a module-level auth store (`workspaceCloud.ts`: `getToken` / `setAuth` / `clearAuth`). No component reads `localStorage` directly — sign-out can only happen through the UI, so every consumer stays consistent by construction.
+
+### 2. Two intents, two dialogs
+
+"Sign in" and "Open workspace" are different jobs, so they are separate events and separate dialogs:
+
+```mermaid
+flowchart TD
+    A["Entry points<br/>top bar · welcome · ☰ menu · save · AI tools"] --> B{"Intent"}
+    B -->|"login"| S["dispatch ws:open-signin"]
+    B -->|"open"| W["dispatch ws:open-workspace"]
+    S --> SD["SignInDialog<br/>username field only"]
+    W --> WD["WorkspaceDialog<br/>cloud scenes + Open file…"]
+    WD -->|"not signed in"| SC["“Sign in to open your cloud canvases”"]
+    SC --> S
+```
+
+- `ws:open-signin` → **SignInDialog** (pure login — no scene list, no file UI).
+- `ws:open-workspace` → **WorkspaceDialog** (cloud scenes with remove, plus Open file…).
+- All 15 entry points (top bar, welcome screen, hamburger menu, Save to Cloud, command palette, AI tools…) dispatch the *right* intent instead of one generic panel.
+
+### 3. Library & AI follow the login state
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant Store as Auth Store
+    participant Lib as Library Adapter
+    participant TTD as TTD Chat Adapter
+    U->>Store: sign in (setAuth)
+    Store-->>Lib: ws:auth-changed
+    Store-->>TTD: ws:auth-changed
+    Lib->>Cloud: load() → updateLibrary()
+    TTD->>Cloud: load() → chat history
+    Note over Lib,TTD: signed-in ⇒ cloud data
+    U->>Store: sign out (clearAuth)
+    Store-->>Lib: ws:auth-changed
+    Store-->>TTD: ws:auth-changed
+    Lib->>Local: fall back to browser IndexedDB
+    Note over Lib,TTD: signed-out ⇒ local data, scene unbinding (canvas stays, auto-save stops)
+```
+
+Login pulls cloud library & AI chats in; sign-out falls back to local IndexedDB and unbinds the current scene — the canvas keeps its content but stops auto-saving to the cloud.
 
 ## Project Layout
 
@@ -142,6 +193,9 @@ Makefile         unified entry point (make install / build / patch / backup / ch
 
 **Why not just use alswl/excalidraw-collaboration?**
 Different goal. That project is built for real-time multi-user collaboration; this one is a **personal cloud** — your scenes, library and AI synced across your own devices. If you need collab, that project is the right choice; this one isn't trying to be it.
+
+**Why is "Sign in" separate from "Open"?**
+Because they are different actions with different failure modes. A clean login dialog (username only) removes friction, while the workspace dialog is about your scenes — and when signed out it says so and offers a sign-in link instead of showing a confusing empty list.
 
 **Why PolyForm Noncommercial?**
 Personal and non-commercial use is free; commercial use requires a license. The patched frontend still contains MIT-licensed upstream code (see [LICENSE](LICENSE)).
