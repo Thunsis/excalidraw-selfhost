@@ -1470,7 +1470,7 @@ index c91ee03..8218da7 100644
 +  "dependencies": {}
  }
 diff --git a/packages/excalidraw/components/App.tsx b/packages/excalidraw/components/App.tsx
-index 4a7a321..248bc00 100644
+index 4a7a321..a02bca6 100644
 --- a/packages/excalidraw/components/App.tsx
 +++ b/packages/excalidraw/components/App.tsx
 @@ -4095,7 +4095,14 @@ class App extends React.Component<AppProps, AppState> {
@@ -1489,6 +1489,17 @@ index 4a7a321..248bc00 100644
        this.setState({ showWelcomeScreen: true });
      }
  
+@@ -5218,6 +5225,10 @@ class App extends React.Component<AppProps, AppState> {
+ 
+       if (elements) {
+         this.scene.replaceAllElements(elements);
++        // Preload font faces (incl. CJK split faces) for the newly loaded
++        // scene, so text renders in the hand-drawn font instead of the
++        // system fallback (canvas rendering does not trigger lazy loading).
++        Fonts.loadElementsFonts(elements).catch(() => {});
+       }
+ 
+       if (collaborators) {
 diff --git a/packages/excalidraw/components/CommandPalette/CommandPalette.tsx b/packages/excalidraw/components/CommandPalette/CommandPalette.tsx
 index a58c795..dc027f1 100644
 --- a/packages/excalidraw/components/CommandPalette/CommandPalette.tsx

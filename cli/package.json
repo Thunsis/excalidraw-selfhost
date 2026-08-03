@@ -13,5 +13,8 @@
   "scripts": {
     "test": "node --test tests/"
   },
-  "license": "PolyForm-Noncommercial-1.0.0"
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "dependencies": {
+    "@excalidraw/element": "^0.18.0-ffcb67b"
+  }
 }
