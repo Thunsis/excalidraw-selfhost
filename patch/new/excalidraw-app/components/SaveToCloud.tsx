@@ -83,8 +83,8 @@ export const SaveToCloud: React.FC<{
       <IconButton
         className="Card-button"
         type="button"
-        title={token ? "Save" : "Sign in"}
-        aria-label={token ? "Save" : "Sign in"}
+        title={token ? "Save to Cloud" : "Sign in"}
+        aria-label={token ? "Save to Cloud" : "Sign in"}
         showAriaLabel={true}
         onClick={handleClick}
       />
