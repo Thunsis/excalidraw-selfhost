@@ -8,6 +8,7 @@ const api = require("./api");
 const config = require("./config");
 const ai = require("./ai");
 const mermaid = require("./mermaid");
+const official = require("./official");
 
 function requireUsername(opts) {
   const u = opts.username || config.username;
@@ -102,7 +103,9 @@ async function cmdAi(prompt, opts) {
     return;
   }
   const mmd = await ai.textToDiagram(prompt);
-  const elements = mermaid.convertMermaid(mmd);
+  const elements = opts.local
+    ? mermaid.convertMermaid(mmd)
+    : await official.convertMermaid(mmd);
   const name =
     opts.name || `AI: ${prompt.slice(0, 40).replace(/\s+/g, " ").trim()}`;
   const res = await api.createScene(u, {
@@ -120,7 +123,9 @@ async function cmdAi(prompt, opts) {
 async function cmdMermaid(file, opts) {
   const u = requireUsername(opts);
   const mmd = fs.readFileSync(file, "utf8");
-  const elements = mermaid.convertMermaid(mmd);
+  const elements = opts.local
+    ? mermaid.convertMermaid(mmd)
+    : await official.convertMermaid(mmd);
   const name =
     opts.name || `Mermaid: ${file.replace(/\.mmd$/, "").split("/").pop()}`;
   const res = await api.createScene(u, {
@@ -191,6 +196,13 @@ async function cmdDoctor(opts) {
     if (res.status !== 400 && res.status !== 200) {
       throw new Error(`unexpected HTTP ${res.status}`);
     }
+  });
+  await probe("mcphub → playwright (official converter)", async () => {
+    const mcp = require("./mcp");
+    const r = await mcp.callTool("playwright-browser_evaluate", {
+      function: "() => ({ ok: true })",
+    });
+    if (!r || !r.ok) throw new Error("browser evaluate did not return ok");
   });
   if (opts.username || config.username) {
     await probe("login", async () => {

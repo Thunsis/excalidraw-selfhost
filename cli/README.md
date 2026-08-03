@@ -9,7 +9,9 @@ bin/excalidraw          CLI entry (node, zero dependencies)
 cli/src/config.js       env/.env configuration
 cli/src/api.js          ws-server REST client (login, scenes, user-data)
 cli/src/ai.js           text-to-diagram SSE client (ai-server)
-cli/src/mermaid.js      lightweight Mermaid → Excalidraw elements converter
+cli/src/official.js     official conversion pipeline (browser: parser CDN + materialize)
+cli/src/mcp.js          mcphub MCP client (drives playwright headless Chrome)
+cli/src/mermaid.js      built-in fallback converter (no browser required)
 cli/src/builder.js      element builders (minimal field set restoreElements accepts)
 cli/src/commands.js     command implementations
 ```
@@ -24,7 +26,10 @@ npm link ./cli          # exposes `excalidraw` on PATH
 ```
 
 Requires Node >= 18 (built-in `fetch`), and a running ws-server (3020) +
-ai-server (3016) — exactly what `make install` sets up.
+ai-server (3016) — exactly what `make install` sets up. The official
+conversion path additionally needs **mcphub** (`localhost:3000`) with the
+playwright MCP server registered (headless Chrome) — the same hub every agent
+already uses.
 
 ## Usage
 
@@ -64,14 +69,18 @@ Values are also picked up from the repo's `.env` if present.
 1. **text-to-diagram** — streams `ai-server`'s SSE endpoint
    (`/v1/ai/text-to-diagram/chat-streaming`, backed by opencode.ai
    deepseek-v4-flash) and collects the Mermaid definition;
-2. **apply** — the built-in converter (`cli/src/mermaid.js`) parses the
-   Mermaid (flowchart TD/LR/BT/RL and sequenceDiagram) and lays it out into
-   Excalidraw elements. Zero dependencies: the official
-   `@excalidraw/mermaid-to-excalidraw` needs a browser DOM (DOMPurify/SVG
-   getBBox) and cannot run in plain Node, so we ship a purpose-built subset
-   converter for exactly what text-to-diagram emits;
+2. **apply** — the **official pipeline** (default): the exact converter the
+   frontend AI uses — `@excalidraw/mermaid-to-excalidraw@2.2.2` imported from
+   esm.sh inside a headless Chrome (via mcphub → playwright MCP), then
+   materialized into full Excalidraw elements (bound text, arrow bindings,
+   edge labels). Pass `--local` to fall back to the built-in zero-dependency
+   converter (`cli/src/mermaid.js`, flowchart/sequenceDiagram subset) when the
+   browser pipeline is unavailable;
 3. **save** — `POST /api/scenes` stores the canvas in your cloud account;
    open it in the web UI like any other scene.
+
+`excalidraw doctor` verifies all four dependencies (ws-server, ai-server,
+mcphub → playwright, login).
 
 ## Design notes
 

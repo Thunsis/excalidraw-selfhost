@@ -8,8 +8,8 @@
  *   excalidraw create <name> [elements.json]
  *   excalidraw update <id> [--name N] [--elements file.json]
  *   excalidraw delete <id>
- *   excalidraw ai "<prompt>" [--name N] [--dry-run] [--verbose]
- *   excalidraw mermaid <file.mmd> [--name N]
+ *   excalidraw ai "<prompt>" [--name N] [--dry-run] [--verbose] [--local]
+ *   excalidraw mermaid <file.mmd> [--name N] [--local]
  *   excalidraw export <id> [out.json]
  *   excalidraw library get|put <file.json>
  *   excalidraw doctor
@@ -29,8 +29,8 @@ Usage:
   excalidraw create <name> [elements.json]
   excalidraw update <id> [--name N] [--elements file.json]
   excalidraw delete <id>
-  excalidraw ai "<prompt>" [--name N] [--dry-run] [--verbose]
-  excalidraw mermaid <file.mmd> [--name N]
+  excalidraw ai "<prompt>" [--name N] [--dry-run] [--verbose] [--local]
+  excalidraw mermaid <file.mmd> [--name N] [--local]
   excalidraw export <id> [out.json]
   excalidraw library get|put <file.json>
   excalidraw doctor
@@ -40,6 +40,8 @@ Flags:
   --json              machine-readable output where supported
   --dry-run           (ai) print Mermaid only, don't save
   --verbose           (ai) also print the generated Mermaid
+  --local             use the built-in converter instead of the official
+                      browser pipeline (mcphub → playwright → parser CDN)
 
 Env:
   EXCALIDRAW_WS_USER  default username
@@ -55,6 +57,7 @@ function parseArgs(argv) {
     if (a === "--json") opts.json = true;
     else if (a === "--dry-run") opts.dryRun = true;
     else if (a === "--verbose") opts.verbose = true;
+    else if (a === "--local") opts.local = true;
     else if (a === "--username") opts.username = argv[++i];
     else if (a === "--name") opts.name = argv[++i];
     else if (a === "--elements") opts.elements = argv[++i];
