@@ -41,7 +41,7 @@ Flags:
   --dry-run           (ai) print Mermaid only, don't save
   --verbose           (ai) also print the generated Mermaid
   --local             use the built-in converter instead of the official
-                      browser pipeline (mcphub → playwright → parser CDN)
+                      pure-node pipeline (jsdom + official packages)
 
 Env:
   EXCALIDRAW_WS_USER  default username
@@ -120,7 +120,11 @@ async function main() {
   }
 }
 
-main().catch((e) => {
-  console.error(`✗ ${e.message}`);
-  process.exitCode = 1;
-});
+// jsdom (mermaid render env) keeps a rAF timer loop alive — exit explicitly
+// so the CLI doesn't hang after the work is done.
+main()
+  .then(() => process.exit(process.exitCode || 0))
+  .catch((e) => {
+    console.error(`✗ ${e.message}`);
+    process.exit(1);
+  });

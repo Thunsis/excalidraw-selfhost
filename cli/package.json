@@ -15,6 +15,9 @@
   },
   "license": "PolyForm-Noncommercial-1.0.0",
   "dependencies": {
-    "@excalidraw/element": "^0.18.0-ffcb67b"
+    "@excalidraw/element": "^0.18.0-ffcb67b",
+    "@excalidraw/mermaid-to-excalidraw": "^2.2.2",
+    "jsdom": "^24.1.3",
+    "mermaid": "^11.16.0"
   }
 }

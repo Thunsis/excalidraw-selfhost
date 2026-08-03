@@ -197,12 +197,14 @@ async function cmdDoctor(opts) {
       throw new Error(`unexpected HTTP ${res.status}`);
     }
   });
-  await probe("mcphub → playwright (official converter)", async () => {
-    const mcp = require("./mcp");
-    const r = await mcp.callTool("playwright-browser_evaluate", {
-      function: "() => ({ ok: true })",
-    });
-    if (!r || !r.ok) throw new Error("browser evaluate did not return ok");
+  await probe("official converter (pure node)", async () => {
+    const official = require("./official");
+    const els = await official.convertMermaid(
+      ["flowchart TD", "  A[OK] --> B[OK]"].join("\n"),
+    );
+    if (!Array.isArray(els) || els.length < 2) {
+      throw new Error(`converter returned ${els.length} elements`);
+    }
   });
   if (opts.username || config.username) {
     await probe("login", async () => {
