@@ -67,69 +67,13 @@ function ensureDom() {
   globalThis.btoa = (s) => Buffer.from(s, "binary").toString("base64");
   globalThis.atob = (s) => Buffer.from(s, "base64").toString("binary");
 
+  // ── Measurement shims ────────────────────────────────────────────────
   // jsdom does not implement getBBox (mermaid measures shapes/text with it).
   // Simulate the union-bbox semantics: text nodes are measured with REAL font
-  // metrics (opentype.js reading the same system font the browser renders),
-  // shape nodes use their width/height attributes, groups union their
-  // children. Measurement only — layout stays 100% official mermaid.
-  //
-  // Why real metrics instead of a ~0.5em heuristic: Trebuchet MS advance
-  // widths vary wildly ('W'=0.85em, 'i'=0.29em) — a flat coefficient is only
-  // right on average and drifts on real words. Reading the font's hmtx table
-  // gives the exact values the browser's getBBox uses.
-  const fs = require("fs");
-  const path = require("path");
-  let metricsFont = undefined; // undefined = not tried yet, null = unavailable
-  function loadMetricsFont() {
-    if (metricsFont !== undefined) return metricsFont;
-    const candidates = [
-      // macOS — mermaid's default font stack starts with "trebuchet ms"
-      "/System/Library/Fonts/Supplemental/Trebuchet MS.ttf",
-      "/Library/Fonts/Trebuchet MS.ttf",
-      "/System/Library/Fonts/Supplemental/Arial.ttf",
-    ];
-    for (const p of candidates) {
-      try {
-        if (fs.existsSync(p)) {
-          const opentype = require("opentype.js");
-          metricsFont = opentype.parse(fs.readFileSync(p));
-          return metricsFont;
-        }
-      } catch {}
-    }
-    metricsFont = null;
-    return null;
-  }
-  const charWidth = (ch, size) => {
-    const c = ch.charCodeAt(0);
-    if (c === 0x20 || c === 0xa0) return size * 0.3; // space
-    if (c > 0x2e80) return size; // CJK full-width (Trebuchet has no CJK glyphs; browsers fall back to a square CJK face)
-    const font = loadMetricsFont();
-    if (font) {
-      const adv = font.getAdvanceWidth(ch, size);
-      if (adv > 0) return adv; // real hmtx advance for the rendered font
-    }
-    return size * 0.5; // fallback heuristic when no system font found
-  };
-  const measureTextWidth = (text, size) => {
-    let w = 0;
-    for (const ch of text) w += charWidth(ch, size);
-    return Math.max(w, 4);
-  };
-  const fontSizeOf = (el) => {
-    let size = 20; // m2e DEFAULT_FONT_SIZE
-    let node = el;
-    while (node && node.getAttribute) {
-      const inline = node.getAttribute && node.getAttribute("style");
-      const m = inline && inline.match(/font-size:\s*([\d.]+)px/);
-      if (m) return parseFloat(m[1]);
-      const fs = node.getAttribute && node.getAttribute("font-size");
-      const m2 = fs && fs.match(/([\d.]+)px?/);
-      if (m2) return parseFloat(m2[1]);
-      node = node.parentNode;
-    }
-    return size;
-  };
+  // metrics (see metrics.js), shape nodes use their width/height attributes,
+  // groups union their children. Measurement only — layout stays 100%
+  // official mermaid.
+  const { charWidth, measureTextWidth, fontSizeOf } = require("./metrics.js");
   globalThis.SVGElement.prototype.getBBox =
     globalThis.SVGElement.prototype.getBBox ||
     function () {

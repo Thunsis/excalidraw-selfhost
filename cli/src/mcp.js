@@ -1,14 +1,20 @@
 /**
  * mcphub MCP client — streamable-http, zero dependencies (Node >= 18 fetch).
  *
- * The CLI drives the official conversion in a real browser through mcphub →
- * playwright MCP (headless Chrome), because @excalidraw/mermaid-to-excalidraw
- * needs a DOM (DOMPurify/SVG getBBox) and cannot run in plain Node.
+ * Used for E2E verification only: drives the official conversion in a real
+ * browser through mcphub → playwright MCP (headless Chrome) as a baseline to
+ * compare the pure-Node output against. Credentials come from the
+ * environment — never hardcode keys in source.
  */
 "use strict";
 
 const BASE = process.env.MCP_HUB_URL || "http://localhost:3000/mcp";
-const KEY = process.env.MCP_HUB_KEY || "agent-os-dev-key";
+const KEY = process.env.MCP_HUB_KEY;
+if (!KEY) {
+  throw new Error(
+    "MCP_HUB_KEY is required — set it in the environment (mcphub bearer key).",
+  );
+}
 
 let sessionId = null;
 

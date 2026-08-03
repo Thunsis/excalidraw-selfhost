@@ -13,6 +13,7 @@
 "use strict";
 
 const b = require("./builder");
+const { measureTextWidth } = require("./metrics");
 
 const NODE_W = 160;
 const NODE_H = 64;
@@ -30,11 +31,7 @@ const COLORS = {
 // ── helpers ────────────────────────────────────────────────────────────────
 
 function textWidth(s, size = 16) {
-  let w = 0;
-  for (const ch of s) {
-    w += ch.charCodeAt(0) > 0x2e80 ? size * 1.0 : size * 0.6; // CJK wider
-  }
-  return Math.max(40, w);
+  return measureTextWidth(s, size);
 }
 
 function stripQuotes(s) {
