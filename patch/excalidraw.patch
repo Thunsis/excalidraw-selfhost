@@ -93,7 +93,7 @@ index 7082105..d34bc3a 100644
    "overrides": [
      {
 diff --git a/excalidraw-app/App.tsx b/excalidraw-app/App.tsx
-index 9ba64e1..b065941 100644
+index 9ba64e1..e36ab75 100644
 --- a/excalidraw-app/App.tsx
 +++ b/excalidraw-app/App.tsx
 @@ -41,11 +41,11 @@ import {
@@ -134,7 +134,7 @@ index 9ba64e1..b065941 100644
  import { isBrowserStorageStateNewer } from "./data/tabSync";
  import { ShareDialog, shareDialogStateAtom } from "./share/ShareDialog";
  import CollabError, { collabErrorIndicatorAtom } from "./collab/CollabError";
-@@ -140,12 +137,22 @@ import DebugCanvas, {
+@@ -140,12 +137,23 @@ import DebugCanvas, {
    loadSavedDebugState,
  } from "./components/DebugCanvas";
  import { AIComponents } from "./components/AI";
@@ -142,6 +142,7 @@ index 9ba64e1..b065941 100644
 +import { SignInDialog } from "./components/SignInDialog";
 +import {
 +  getToken,
++  isSignedIn,
 +  openSignIn,
 +  openWorkspace,
 +  workspaceAutoSaveRef,
@@ -158,7 +159,7 @@ index 9ba64e1..b065941 100644
  
  import type { CollabAPI } from "./collab/Collab";
  
-@@ -412,11 +419,27 @@ const ExcalidrawWrapper = () => {
+@@ -412,11 +420,48 @@ const ExcalidrawWrapper = () => {
  
    useHandleLibrary({
      excalidrawAPI,
@@ -184,10 +185,31 @@ index 9ba64e1..b065941 100644
 +    return () => window.removeEventListener("ws:auth-changed", onAuthChanged);
 +  }, [excalidrawAPI]);
 +
++  // 已登录 = 工作区模式：空画布不弹欢迎页（Close 后落空白 canvas，Open 一步达云端列表）
++  const [signedIn, setSignedIn] = useState<boolean>(() => isSignedIn());
++  useEffect(() => {
++    const onAuthChanged = () => setSignedIn(isSignedIn());
++    window.addEventListener("ws:auth-changed", onAuthChanged);
++    return () => window.removeEventListener("ws:auth-changed", onAuthChanged);
++  }, []);
++
++  // Cmd+O / Ctrl+O → 云端工作区（与欢迎页/工具栏 Open 同一语义；拦截核心包的原生本地文件打开）
++  useEffect(() => {
++    const onKeyDown = (e: KeyboardEvent) => {
++      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "o") {
++        e.preventDefault();
++        e.stopPropagation();
++        openWorkspace();
++      }
++    };
++    window.addEventListener("keydown", onKeyDown, true);
++    return () => window.removeEventListener("keydown", onKeyDown, true);
++  }, []);
++
    const [, forceRefresh] = useState(false);
  
    useEffect(() => {
-@@ -573,7 +596,7 @@ const ExcalidrawWrapper = () => {
+@@ -573,7 +618,7 @@ const ExcalidrawWrapper = () => {
              ...localDataState,
              captureUpdate: CaptureUpdateAction.NEVER,
            });
@@ -196,7 +218,7 @@ index 9ba64e1..b065941 100644
              if (data) {
                excalidrawAPI.updateLibrary({
                  libraryItems: data.libraryItems,
-@@ -724,6 +747,9 @@ const ExcalidrawWrapper = () => {
+@@ -724,6 +769,9 @@ const ExcalidrawWrapper = () => {
          window.devicePixelRatio,
        );
      }
@@ -206,7 +228,7 @@ index 9ba64e1..b065941 100644
    };
  
    const [latestShareableLink, setLatestShareableLink] = useState<string | null>(
-@@ -862,41 +888,30 @@ const ExcalidrawWrapper = () => {
+@@ -862,41 +910,30 @@ const ExcalidrawWrapper = () => {
    }
  
    const ExcalidrawPlusCommand = {
@@ -263,7 +285,15 @@ index 9ba64e1..b065941 100644
      },
    };
  
-@@ -921,11 +936,10 @@ const ExcalidrawWrapper = () => {
+@@ -913,6 +950,7 @@ const ExcalidrawWrapper = () => {
+         initialData={initialStatePromiseRef.current.promise}
+         isCollaborating={isCollaborating}
+         onPointerUpdate={collabAPI?.onPointerUpdate}
++        showWelcomeScreenOnEmpty={!signedIn}
+         UIOptions={{
+           canvasActions: {
+             toggleTheme: true,
+@@ -921,11 +959,10 @@ const ExcalidrawWrapper = () => {
                renderCustomUI: excalidrawAPI
                  ? (elements, appState, files) => {
                      return (
@@ -276,7 +306,7 @@ index 9ba64e1..b065941 100644
                          onError={(error) => {
                            excalidrawAPI?.updateScene({
                              appState: {
-@@ -960,9 +974,7 @@ const ExcalidrawWrapper = () => {
+@@ -960,9 +997,7 @@ const ExcalidrawWrapper = () => {
            return (
              <div className="excalidraw-ui-top-right">
                {excalidrawAPI?.getEditorInterface().formFactor === "desktop" && (
@@ -287,7 +317,7 @@ index 9ba64e1..b065941 100644
                )}
  
                {collabError.message && <CollabError collabError={collabError} />}
-@@ -1003,23 +1015,62 @@ const ExcalidrawWrapper = () => {
+@@ -1003,23 +1038,62 @@ const ExcalidrawWrapper = () => {
            <OverwriteConfirmDialog.Actions.SaveToDisk />
            {excalidrawAPI && (
              <OverwriteConfirmDialog.Action
@@ -361,7 +391,7 @@ index 9ba64e1..b065941 100644
  
          <TTDDialogTrigger />
          {isCollaborating && isOffline && (
-@@ -1060,8 +1111,6 @@ const ExcalidrawWrapper = () => {
+@@ -1060,8 +1134,6 @@ const ExcalidrawWrapper = () => {
            }}
          />
  
@@ -370,7 +400,7 @@ index 9ba64e1..b065941 100644
          {errorMessage && (
            <ErrorDialog onClose={() => setErrorMessage("")}>
              {errorMessage}
-@@ -1216,19 +1265,54 @@ const ExcalidrawWrapper = () => {
+@@ -1216,19 +1288,54 @@ const ExcalidrawWrapper = () => {
                : [ExcalidrawPlusCommand, ExcalidrawPlusAppCommand]),
  
              {
@@ -1060,22 +1090,24 @@ index d2f2a66..0000000
 -  );
 -};
 diff --git a/excalidraw-app/components/AppWelcomeScreen.tsx b/excalidraw-app/components/AppWelcomeScreen.tsx
-index 903af7a..3c5e933 100644
+index 903af7a..ad27a17 100644
 --- a/excalidraw-app/components/AppWelcomeScreen.tsx
 +++ b/excalidraw-app/components/AppWelcomeScreen.tsx
-@@ -1,10 +1,10 @@
- import { loginIcon } from "@excalidraw/excalidraw/components/icons";
+@@ -1,10 +1,11 @@
+-import { loginIcon } from "@excalidraw/excalidraw/components/icons";
 -import { POINTER_EVENTS } from "@excalidraw/common";
++import { LoadIcon, loginIcon } from "@excalidraw/excalidraw/components/icons";
++import { getShortcutFromShortcutName } from "@excalidraw/excalidraw/actions/shortcuts";
  import { useI18n } from "@excalidraw/excalidraw/i18n";
  import { WelcomeScreen } from "@excalidraw/excalidraw/index";
  import React from "react";
  
  import { isExcalidrawPlusSignedUser } from "../app_constants";
-+import { openSignIn } from "./workspaceCloud";
++import { openSignIn, openWorkspace } from "./workspaceCloud";
  
  export const AppWelcomeScreen: React.FC<{
    onCollabDialogOpen: () => any;
-@@ -18,17 +18,7 @@ export const AppWelcomeScreen: React.FC<{
+@@ -18,17 +19,7 @@ export const AppWelcomeScreen: React.FC<{
        .split(/(Excalidraw\+)/)
        .map((bit, idx) => {
          if (bit === "Excalidraw+") {
@@ -1094,7 +1126,24 @@ index 903af7a..3c5e933 100644
          }
          return bit;
        });
-@@ -65,15 +55,15 @@ export const AppWelcomeScreen: React.FC<{
+@@ -57,7 +48,15 @@ export const AppWelcomeScreen: React.FC<{
+           {headingContent}
+         </WelcomeScreen.Center.Heading>
+         <WelcomeScreen.Center.Menu>
+-          <WelcomeScreen.Center.MenuItemLoadScene />
++          <WelcomeScreen.Center.MenuItem
++            onSelect={() => {
++              openWorkspace();
++            }}
++            shortcut={getShortcutFromShortcutName("loadScene")}
++            icon={LoadIcon}
++          >
++            {t("buttons.load")}
++          </WelcomeScreen.Center.MenuItem>
+           <WelcomeScreen.Center.MenuItemHelp />
+           {props.isCollabEnabled && (
+             <WelcomeScreen.Center.MenuItemLiveCollaborationTrigger
+@@ -65,15 +64,15 @@ export const AppWelcomeScreen: React.FC<{
              />
            )}
            {!isExcalidrawPlusSignedUser && (
@@ -1420,6 +1469,26 @@ index c91ee03..8218da7 100644
 +  },
 +  "dependencies": {}
  }
+diff --git a/packages/excalidraw/components/App.tsx b/packages/excalidraw/components/App.tsx
+index 4a7a321..248bc00 100644
+--- a/packages/excalidraw/components/App.tsx
++++ b/packages/excalidraw/components/App.tsx
+@@ -4095,7 +4095,14 @@ class App extends React.Component<AppProps, AppState> {
+       this.setState({ exportWithDarkMode: shouldExportWithDarkMode });
+     }
+ 
+-    if (!this.state.showWelcomeScreen && !elements.length) {
++    // 自托管定制：showWelcomeScreenOnEmpty=false 时（已登录工作区模式）
++    // 空画布强制隐藏欢迎页（含 Close 清空场景后的存量显示状态），
++    // 默认/未登录保持上游行为（空画布自动弹欢迎页）
++    if (this.props.showWelcomeScreenOnEmpty === false) {
++      if (this.state.showWelcomeScreen) {
++        this.setState({ showWelcomeScreen: false });
++      }
++    } else if (!this.state.showWelcomeScreen && !elements.length) {
+       this.setState({ showWelcomeScreen: true });
+     }
+ 
 diff --git a/packages/excalidraw/components/CommandPalette/CommandPalette.tsx b/packages/excalidraw/components/CommandPalette/CommandPalette.tsx
 index a58c795..dc027f1 100644
 --- a/packages/excalidraw/components/CommandPalette/CommandPalette.tsx
@@ -1638,6 +1707,45 @@ index 784b1f3..575628b 100644
  export const youtubeIcon = createIcon(
    <g>
      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+diff --git a/packages/excalidraw/index.tsx b/packages/excalidraw/index.tsx
+index 240743c..e18892d 100644
+--- a/packages/excalidraw/index.tsx
++++ b/packages/excalidraw/index.tsx
+@@ -110,6 +110,7 @@ const ExcalidrawBase = (props: ExcalidrawProps) => {
+     showDeprecatedFonts,
+     renderScrollbars,
+     imageOptions,
++    showWelcomeScreenOnEmpty,
+   } = props;
+ 
+   const canvasActions = props.UIOptions?.canvasActions;
+@@ -246,6 +247,7 @@ const ExcalidrawBase = (props: ExcalidrawProps) => {
+           showDeprecatedFonts={showDeprecatedFonts}
+           renderScrollbars={renderScrollbars}
+           imageOptions={normalizedImageOptions}
++          showWelcomeScreenOnEmpty={showWelcomeScreenOnEmpty}
+         >
+           {children}
+         </App>
+diff --git a/packages/excalidraw/types.ts b/packages/excalidraw/types.ts
+index 0ef9b3c..adb6d39 100644
+--- a/packages/excalidraw/types.ts
++++ b/packages/excalidraw/types.ts
+@@ -889,6 +889,14 @@ export interface ExcalidrawProps {
+   theme?: Theme;
+   // @TODO come with better API before v0.18.0
+   name?: string;
++  /**
++   * When `false`, the welcome screen is never shown automatically when the
++   * canvas is empty (e.g. after closing a scene). Hosts whose product is
++   * workspace-first (cloud canvases) can disable the auto-welcome for
++   * signed-in users and land them on a blank canvas instead. Defaults to
++   * `true` (upstream behavior).
++   */
++  showWelcomeScreenOnEmpty?: boolean;
+   renderCustomStats?: (
+     elements: readonly NonDeletedExcalidrawElement[],
+     appState: UIAppState,
 diff --git a/yarn.lock b/yarn.lock
 index e2eb9e9..348eb3d 100644
 --- a/yarn.lock
