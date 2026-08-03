@@ -72,14 +72,15 @@ function ensureDom() {
   // (CJK full-width, latin ~0.6em), shape nodes use their width/height
   // attributes, groups union their children (offset by child x/y).
   // Measurement only — layout stays 100% official mermaid.
+  const charWidth = (ch, size) => {
+    const c = ch.charCodeAt(0);
+    if (c === 0x20 || c === 0xa0) return size * 0.3; // space
+    if (c > 0x2e80) return size; // CJK full-width
+    return size * 0.5; // latin/digit (trebuchet ms ≈ 0.5em avg)
+  };
   const measureTextWidth = (text, size) => {
     let w = 0;
-    for (const ch of text) {
-      const c = ch.charCodeAt(0);
-      if (c === 0x20 || c === 0xa0) w += size * 0.35; // space
-      else if (c > 0x2e80) w += size; // CJK full-width
-      else w += size * 0.6; // latin/digit
-    }
+    for (const ch of text) w += charWidth(ch, size);
     return Math.max(w, 4);
   };
   const fontSizeOf = (el) => {
@@ -115,24 +116,52 @@ function ensureDom() {
         const h = parseFloat(hAttr) || 0;
         return { x: parseFloat(xAttr) || 0, y: parseFloat(yAttr) || 0, width: w, height: h };
       }
+      // polygon (mermaid diamond/decision nodes) — derive bbox from points
+      if (this.tagName === "polygon") {
+        const pts = (this.getAttribute("points") || "")
+          .trim()
+          .split(/\s+/)
+          .map((p) => p.split(",").map(parseFloat))
+          .filter((p) => p.length === 2 && !isNaN(p[0]) && !isNaN(p[1]));
+        if (pts.length) {
+          const xs = pts.map((p) => p[0]);
+          const ys = pts.map((p) => p[1]);
+          const minX = Math.min(...xs);
+          const maxX = Math.max(...xs);
+          const minY = Math.min(...ys);
+          const maxY = Math.max(...ys);
+          return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+        }
+      }
+      // circle/ellipse without explicit width/height attrs (rare)
+      if (this.tagName === "circle") {
+        const r = parseFloat(this.getAttribute("r")) || 0;
+        const cx = parseFloat(this.getAttribute("cx")) || 0;
+        const cy = parseFloat(this.getAttribute("cy")) || 0;
+        return { x: cx - r, y: cy - r, width: 2 * r, height: 2 * r };
+      }
       if (this.tagName === "text" || this.tagName === "tspan") {
         const w = measureTextWidth(this.textContent || "", size);
         return { x: 0, y: 0, width: w, height: size * 1.25 };
       }
-      // group (g) or anything else: union of children bboxes
+      // group (g) or anything else: union of children bboxes.
+      // text/tspan are skipped (htmlLabels mode: label is measured via
+      // getBoundingClientRect/foreignObject; SVG text bboxes here carry no
+      // transform and would widen the union). Empty groups return zero — do
+      // NOT fall back to textContent (that inflates nested label groups).
       let minX = 0, minY = 0, maxX = 0, maxY = 0;
       let first = true;
       const kids = this.children ? [...this.children] : [];
       for (const kid of kids) {
+        if (kid.tagName === "text" || kid.tagName === "tspan") continue;
         const b = kid.getBBox ? kid.getBBox() : null;
-        if (!b || (b.width === 0 && b.height === 0 && b.x === 0 && b.y === 0 && kid.tagName !== "text")) continue;
+        if (!b || (b.width === 0 && b.height === 0 && b.x === 0 && b.y === 0)) continue;
         const x0 = b.x, y0 = b.y, x1 = b.x + b.width, y1 = b.y + b.height;
         if (first) { minX = x0; minY = y0; maxX = x1; maxY = y1; first = false; }
         else { minX = Math.min(minX, x0); minY = Math.min(minY, y0); maxX = Math.max(maxX, x1); maxY = Math.max(maxY, y1); }
       }
       if (first) {
-        const w = measureTextWidth(this.textContent || "", size);
-        return { x: 0, y: 0, width: w, height: size * 1.25 };
+        return { x: 0, y: 0, width: 0, height: 0 };
       }
       return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
     };
@@ -145,19 +174,80 @@ function ensureDom() {
       return 0;
     };
 
+  // mermaid's splitText (line wrapping) measures words with
+  // SVGTextElement.getComputedTextLength — jsdom stubs it to 0, so every word
+  // "fits" and long labels never wrap (nodes come out unnaturally wide).
+  // Must patch the jsdom window prototype (mermaid uses window-created nodes).
+  if (dom.window.SVGTextElement) {
+    dom.window.SVGTextElement.prototype.getComputedTextLength = function () {
+      return measureTextWidth(this.textContent || "", fontSizeOf(this));
+    };
+  }
+
+  // mermaid's splitText (line wrapping) measures text with a canvas 2d
+  // context.measureText — jsdom returns 0, so long labels never wrap and
+  // nodes come out unnaturally wide. Provide a measuring stub.
+  const OrigGetContext = dom.window.HTMLCanvasElement.prototype.getContext;
+  dom.window.HTMLCanvasElement.prototype.getContext = function (type) {
+    if (type === "2d") {
+      return {
+        font: "20px sans-serif",
+        measureText(text) {
+          const m = String(this.font).match(/(\d+)px/);
+          const size = m ? parseInt(m[1], 10) : 20;
+          return { width: measureTextWidth(String(text), size) };
+        },
+        fillText() {},
+        strokeText() {},
+        save() {},
+        restore() {},
+        translate() {},
+        scale() {},
+        setTransform() {},
+        clearRect() {},
+        fillRect() {},
+        beginPath() {},
+        closePath() {},
+        moveTo() {},
+        lineTo() {},
+        stroke() {},
+        fill() {},
+      };
+    }
+    return OrigGetContext ? OrigGetContext.call(this, type) : null;
+  };
+
   // mermaid htmlLabels mode measures node labels with getBoundingClientRect()
   // on HTML divs — jsdom has no layout and returns all zeros. Match the
   // browser baseline measured on draw.430812.xyz: label div = glyph width
-  // (CJK full-width @ font-size) × font-size*1.5 line height, no extra padding
-  // (mermaid adds node padding itself).
+  // (CJK full-width @ font-size) × font-size*1.5 line height; when the label
+  // has a max-width style and text overflows, the browser wraps (mermaid then
+  // switches the div to break-spaces) — simulate that wrapping here so nodes
+  // come out the same size as in a real browser.
   const win = dom.window;
   const OrigGBCR = win.Element.prototype.getBoundingClientRect;
   win.Element.prototype.getBoundingClientRect = function () {
     const text = (this.textContent || "").trim();
     if (text) {
       const size = fontSizeOf(this);
-      const w = measureTextWidth(text, size);
-      const h = size * 1.5;
+      const style = (this.getAttribute && this.getAttribute("style")) || "";
+      const mw = style.match(/max-width:\s*(\d+)px/);
+      const maxWidth = mw ? parseInt(mw[1], 10) : 0;
+      let lines = 1;
+      let cur = 0;
+      let totalW = 0;
+      for (const ch of text) {
+        const cw = charWidth(ch, size);
+        if (maxWidth > 0 && cur + cw > maxWidth && cur > 0) {
+          lines++;
+          cur = cw;
+        } else {
+          cur += cw;
+        }
+        totalW = Math.max(totalW, cur);
+      }
+      const w = maxWidth > 0 && totalW > maxWidth ? maxWidth : totalW;
+      const h = size * 1.5 * lines;
       return { x: 0, y: 0, top: 0, left: 0, right: w, bottom: h, width: w, height: h, toJSON() { return {}; } };
     }
     return OrigGBCR.call(this);
