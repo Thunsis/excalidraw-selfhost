@@ -34,18 +34,21 @@ function buildConvertScript(mmd) {
     const els = [];
     const shapes = new Map();
     const arrows = [];
+    let z = 0;
+    const zIndex = () => "a" + (z++).toString(36);
     for (const el of elements) {
       if (el.type === "arrow") { arrows.push(el); continue; }
       const newId = mid(el.id);
       const w = el.width || 100;
       const h = el.height || 60;
+      let t = null;
       const shape = {
         id: newId, type: el.type, x: el.x, y: el.y, width: w, height: h,
         angle: 0, strokeColor: el.strokeColor || "#1e1e1e",
         backgroundColor: el.backgroundColor || "transparent",
-        fillStyle: "hachure", strokeWidth: el.strokeWidth || 2,
+        fillStyle: "solid", strokeWidth: el.strokeWidth || 2,
         strokeStyle: "solid", roughness: 1, opacity: 100, groupIds: [],
-        frameId: null, index: "a" + rand(), seed: rand(), version: 1,
+        frameId: null, index: zIndex(), seed: rand(), version: 1,
         versionNonce: rand(), isDeleted: false, boundElements: [],
         updated: Date.now(), link: null, locked: false,
       };
@@ -55,24 +58,26 @@ function buildConvertScript(mmd) {
         // minus half the text box (what the editor itself stores).
         const tw = Math.max(40, el.label.text.length * fs);
         const th = fs * 1.25;
-        const t = {
+        t = {
           id: rid(), type: "text",
           x: el.x + (w - tw) / 2, y: el.y + (h - th) / 2,
           width: tw, height: th,
           angle: 0, strokeColor: "#1e1e1e", backgroundColor: "transparent",
           fillStyle: "solid", strokeWidth: 2, strokeStyle: "solid", roughness: 1,
-          opacity: 100, groupIds: [], frameId: null, index: "a" + rand(),
+          opacity: 100, groupIds: [], frameId: null, index: zIndex(),
           seed: rand(), version: 1, versionNonce: rand(), isDeleted: false,
           boundElements: null, updated: Date.now(), link: null, locked: false,
-          fontSize: fs, fontFamily: 1, text: el.label.text,
+          fontSize: fs, fontFamily: 5, text: el.label.text,
           textAlign: "center", verticalAlign: "middle", containerId: newId,
           originalText: el.label.text, lineHeight: 1.25, autoResize: true,
         };
         shape.boundElements.push({ id: t.id, type: "text" });
-        els.push(t);
       }
       shapes.set(newId, shape);
       els.push(shape);
+      if (el.label && el.label.text) {
+        els.push(t);
+      }
     }
     for (const a of arrows) {
       const newId = mid(a.id);
@@ -94,17 +99,46 @@ function buildConvertScript(mmd) {
       };
       const sShape = startId ? shapes.get(startId) : null;
       const eShape = endId ? shapes.get(endId) : null;
+      // Precise anchor points (edge intersections along the center line),
+      // converted to fixedPoint ratios — matches what the frontend converter
+      // stores ({elementId, mode: "orbit", fixedPoint}).
+      let p1 = null;
+      let p2 = null;
+      if (sShape && eShape && sShape !== eShape) {
+        p1 = edgePoint(sShape, eShape);
+        p2 = edgePoint(eShape, sShape);
+      }
       const arrow = {
         id: newId, type: "arrow", x: a.x, y: a.y, width: a.width || 0, height: a.height || 0,
         angle: 0, strokeColor: a.strokeColor || "#1e1e1e",
         backgroundColor: "transparent", fillStyle: "solid",
         strokeWidth: a.strokeWidth || 2, strokeStyle: "solid", roughness: 1,
-        opacity: 100, groupIds: [], frameId: null, index: "a" + rand(),
+        opacity: 100, groupIds: [], frameId: null, index: zIndex(),
         seed: rand(), version: 1, versionNonce: rand(), isDeleted: false,
         boundElements: null, updated: Date.now(), link: null, locked: false,
         points: (a.points && a.points.length) ? a.points : [[0, 0], [a.width || 0, a.height || 0]],
-        startBinding: startId ? { elementId: startId, focus: 0, gap: 5 } : null,
-        endBinding: endId ? { elementId: endId, focus: 0, gap: 5 } : null,
+        startBinding:
+          startId && p1 && sShape
+            ? {
+                elementId: startId,
+                mode: "orbit",
+                fixedPoint: [
+                  (p1.x - sShape.x) / sShape.width,
+                  (p1.y - sShape.y) / sShape.height,
+                ],
+              }
+            : null,
+        endBinding:
+          endId && p2 && eShape
+            ? {
+                elementId: endId,
+                mode: "orbit",
+                fixedPoint: [
+                  (p2.x - eShape.x) / eShape.width,
+                  (p2.y - eShape.y) / eShape.height,
+                ],
+              }
+            : null,
         startArrowhead: null, endArrowhead: "arrow",
         roundness: { type: 2 }, elbowed: false,
       };
@@ -113,9 +147,7 @@ function buildConvertScript(mmd) {
       if (a.label && a.label.text) {
         const atw = Math.max(30, a.label.text.length * 12);
         let lx, ly;
-        if (sShape && eShape && sShape !== eShape) {
-          const p1 = edgePoint(sShape, eShape);
-          const p2 = edgePoint(eShape, sShape);
+        if (p1 && p2) {
           lx = p1.x + (p2.x - p1.x) * 0.45;
           ly = p1.y + (p2.y - p1.y) * 0.45 - 7;
         } else {
@@ -129,10 +161,10 @@ function buildConvertScript(mmd) {
           width: atw, height: 15,
           angle: 0, strokeColor: "#6b7280", backgroundColor: "transparent",
           fillStyle: "solid", strokeWidth: 2, strokeStyle: "solid", roughness: 1,
-          opacity: 100, groupIds: [], frameId: null, index: "a" + rand(),
+          opacity: 100, groupIds: [], frameId: null, index: zIndex(),
           seed: rand(), version: 1, versionNonce: rand(), isDeleted: false,
           boundElements: null, updated: Date.now(), link: null, locked: false,
-          fontSize: 12, fontFamily: 1, text: a.label.text,
+          fontSize: 12, fontFamily: 5, text: a.label.text,
           textAlign: "center", verticalAlign: "top", containerId: null,
           originalText: a.label.text, lineHeight: 1.25, autoResize: true,
         };

@@ -55,7 +55,7 @@ function text(x, y, s, { size = 20, color = "#1e1e1e" } = {}) {
     height: Math.ceil(size * 1.25),
     strokeColor: color,
     fontSize: size,
-    fontFamily: 1,
+    fontFamily: 5, // Excalifont — CJK falls back to Xiaolai (hand-drawn), same as frontend TTD
     text: s,
     textAlign: "left",
     verticalAlign: "top",
@@ -73,9 +73,6 @@ function rect(x, y, w, h, { fill = "transparent", stroke = "#1e1e1e", radius = t
     strokeColor: stroke,
     backgroundColor: fill,
   });
-  if (radius) {
-    el.roundness = { type: 3 };
-  }
   return el;
 }
 
