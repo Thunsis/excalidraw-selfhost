@@ -18,16 +18,59 @@
  */
 "use strict";
 
+const fs = require("fs");
+const path = require("path");
+
 let domReady = false;
 
-/** Install browser-ish globals via jsdom, once. */
-function ensureDom() {
+/**
+ * Install browser-ish globals via jsdom, once.
+ * @param {object} [opts] { canvas: true → attach @napi-rs/canvas to jsdom so
+ *   document.createElement("canvas") yields a real Canvas 2D context. Used by
+ *   the official exportToCanvas PNG pipeline. Default (mermaid conversion)
+ *   keeps the jsdom canvas stub + measurement polyfills intact. }
+ */
+function ensureDom(opts = {}) {
   if (domReady) return;
   const { JSDOM } = require("jsdom");
-  const dom = new JSDOM("<!DOCTYPE html><html><body></body></html>", {
+  const domOptions = {
     pretendToBeVisual: true,
     url: "http://localhost/",
-  });
+  };
+  if (opts.canvas) {
+    // NOTE: must require("canvas") (npm alias → @napi-rs/canvas), NOT
+    // "@napi-rs/canvas" — jsdom's utils.js does require("canvas") and the
+    // alias installs as a separate module instance. Two instances = two
+    // GlobalFonts registries: fonts registered here would be invisible to
+    // the canvas jsdom creates (fillText silently draws nothing).
+    const canvasMod = require("canvas");
+    domOptions.canvas = canvasMod;
+    // Register the bundled handwritten font so canvas rasterization uses it
+    // (jsdom's document.fonts is absent — @napi-rs/canvas resolves font
+    // families from its own global registry instead).
+    const ttfDir = path.join(__dirname, "..", "fonts", "ttf");
+    if (fs.existsSync(ttfDir)) {
+      // loadFontsFromDir merges all slices into ONE family entry (7 styles)
+      // — per-file registerFromPath with the same family name would
+      // overwrite instead, leaving only the last slice's glyphs and making
+      // fillText silently draw nothing for chars outside its unicode range.
+      try {
+        canvasMod.GlobalFonts.loadFontsFromDir(ttfDir);
+      } catch {
+        // fall back to per-file registration if dir load is unsupported
+        for (const f of fs.readdirSync(ttfDir)) {
+          if (f.endsWith(".ttf")) {
+            try {
+              canvasMod.GlobalFonts.registerFromPath(path.join(ttfDir, f), "Excalifont");
+            } catch {
+              // ignore unparseable slices
+            }
+          }
+        }
+      }
+    }
+  }
+  const dom = new JSDOM("<!DOCTYPE html><html><body></body></html>", domOptions);
 
   globalThis.window = dom.window;
   globalThis.document = dom.window.document;
@@ -66,6 +109,43 @@ function ensureDom() {
     };
   globalThis.btoa = (s) => Buffer.from(s, "binary").toString("base64");
   globalThis.atob = (s) => Buffer.from(s, "base64").toString("binary");
+  // jsdom has no FontFace — the official exporters instantiate it while
+  // loading element fonts. Stub: fonts are rasterized by @napi-rs/canvas
+  // (GlobalFonts), not via document.fonts here.
+  if (typeof globalThis.FontFace === "undefined") {
+    globalThis.FontFace = class FontFace {
+      constructor(family, source, descriptors = {}) {
+        this.family = family;
+        this.source = source;
+        this.descriptors = descriptors;
+        this.unicodeRange = descriptors.unicodeRange;
+        this.status = "loaded";
+      }
+      load() {
+        return Promise.resolve(this);
+      }
+    };
+  }
+  if (globalThis.document && !globalThis.document.fonts) {
+    // exportToCanvas's loadFontFaces calls document.fonts.check() — jsdom
+    // lacks FontFaceSet. check() → true skips FontFace loading entirely;
+    // fonts are rasterized by @napi-rs/canvas from its GlobalFonts registry
+    // (registered in ensureDom({canvas:true})), so nothing is lost.
+    globalThis.document.fonts = {
+      size: 0,
+      status: "loaded",
+      add() {},
+      has() {
+        return true; // font already "registered" — skip FontFace loading
+      },
+      check() {
+        return true;
+      },
+      load() {
+        return Promise.resolve([]);
+      },
+    };
+  }
 
   // ── Measurement shims ────────────────────────────────────────────────
   // jsdom does not implement getBBox (mermaid measures shapes/text with it).
@@ -198,35 +278,39 @@ function ensureDom() {
   // mermaid's splitText (line wrapping) measures text with a canvas 2d
   // context.measureText — jsdom returns 0, so long labels never wrap and
   // nodes come out unnaturally wide. Provide a measuring stub.
-  const OrigGetContext = dom.window.HTMLCanvasElement.prototype.getContext;
-  dom.window.HTMLCanvasElement.prototype.getContext = function (type) {
-    if (type === "2d") {
-      return {
-        font: "20px sans-serif",
-        measureText(text) {
-          const m = String(this.font).match(/(\d+)px/);
-          const size = m ? parseInt(m[1], 10) : 20;
-          return { width: measureTextWidth(String(text), size) };
-        },
-        fillText() {},
-        strokeText() {},
-        save() {},
-        restore() {},
-        translate() {},
-        scale() {},
-        setTransform() {},
-        clearRect() {},
-        fillRect() {},
-        beginPath() {},
-        closePath() {},
-        moveTo() {},
-        lineTo() {},
-        stroke() {},
-        fill() {},
-      };
-    }
-    return OrigGetContext ? OrigGetContext.call(this, type) : null;
-  };
+  // NOTE: skipped when opts.canvas — the real @napi-rs/canvas context must
+  // stay untouched for the official exportToCanvas renderer.
+  if (!opts.canvas) {
+    const OrigGetContext = dom.window.HTMLCanvasElement.prototype.getContext;
+    dom.window.HTMLCanvasElement.prototype.getContext = function (type) {
+      if (type === "2d") {
+        return {
+          font: "20px sans-serif",
+          measureText(text) {
+            const m = String(this.font).match(/(\d+)px/);
+            const size = m ? parseInt(m[1], 10) : 20;
+            return { width: measureTextWidth(String(text), size) };
+          },
+          fillText() {},
+          strokeText() {},
+          save() {},
+          restore() {},
+          translate() {},
+          scale() {},
+          setTransform() {},
+          clearRect() {},
+          fillRect() {},
+          beginPath() {},
+          closePath() {},
+          moveTo() {},
+          lineTo() {},
+          stroke() {},
+          fill() {},
+        };
+      }
+      return OrigGetContext ? OrigGetContext.call(this, type) : null;
+    };
+  }
 
   // mermaid htmlLabels mode measures node labels with getBoundingClientRect()
   // on HTML divs — jsdom has no layout and returns all zeros. Match the
@@ -319,4 +403,4 @@ async function convertMermaid(mmd) {
   return convertToExcalidrawElements(elements);
 }
 
-module.exports = { convertMermaid };
+module.exports = { convertMermaid, ensureDom };

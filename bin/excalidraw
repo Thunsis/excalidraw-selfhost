@@ -42,6 +42,7 @@ Flags:
   --verbose           (ai) also print the generated Mermaid
   --local             use the built-in converter instead of the official
                       pure-node pipeline (jsdom + official packages)
+  --png               (export) render PNG image instead of elements JSON
 
 Env:
   EXCALIDRAW_WS_USER  default username
@@ -58,6 +59,7 @@ function parseArgs(argv) {
     else if (a === "--dry-run") opts.dryRun = true;
     else if (a === "--verbose") opts.verbose = true;
     else if (a === "--local") opts.local = true;
+    else if (a === "--png") opts.png = true;
     else if (a === "--username") opts.username = argv[++i];
     else if (a === "--name") opts.name = argv[++i];
     else if (a === "--elements") opts.elements = argv[++i];

@@ -139,6 +139,14 @@ async function cmdMermaid(file, opts) {
 async function cmdExport(id, file, opts) {
   const u = requireUsername(opts);
   const scene = await api.getScene(u, id);
+  if (opts.png) {
+    const { elementsToPng } = require("./png");
+    const outFile = file || `scene-${id}.png`;
+    const png = await elementsToPng(scene.elements);
+    fs.writeFileSync(outFile, png);
+    console.log(`✅ exported #${id} → ${outFile} (${scene.elements.length} elements, PNG)`);
+    return;
+  }
   const out = JSON.stringify(scene.elements, null, 1);
   if (file) {
     fs.writeFileSync(file, out);
