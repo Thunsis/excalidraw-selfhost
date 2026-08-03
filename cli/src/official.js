@@ -142,18 +142,32 @@ function ensureDom() {
       }
       if (this.tagName === "text" || this.tagName === "tspan") {
         const w = measureTextWidth(this.textContent || "", size);
-        return { x: 0, y: 0, width: w, height: size * 1.25 };
+        const h = size * 1.25;
+        // SVG-mode labels position text via transform translate or x/y attrs;
+        // without this the bbox sits at 0,0 and inflates the group union.
+        let tx = 0;
+        let ty = 0;
+        const tr = (this.getAttribute && this.getAttribute("transform")) || "";
+        const m = tr.match(/translate\(\s*([-\d.]+)[,\s]\s*([-\d.]+)\s*\)/);
+        if (m) {
+          tx = parseFloat(m[1]);
+          ty = parseFloat(m[2]);
+        } else {
+          const xa = this.getAttribute && this.getAttribute("x");
+          const ya = this.getAttribute && this.getAttribute("y");
+          tx = xa ? parseFloat(xa) : 0;
+          ty = ya ? parseFloat(ya) - h : 0;
+        }
+        return { x: tx, y: ty, width: w, height: h };
       }
       // group (g) or anything else: union of children bboxes.
-      // text/tspan are skipped (htmlLabels mode: label is measured via
-      // getBoundingClientRect/foreignObject; SVG text bboxes here carry no
-      // transform and would widen the union). Empty groups return zero — do
-      // NOT fall back to textContent (that inflates nested label groups).
+      // htmlLabels mode: label divs are measured via getBoundingClientRect
+      // (foreignObject bbox is 0 here), SVG-mode labels are <text> with
+      // transform offsets — both contribute correctly through their children.
       let minX = 0, minY = 0, maxX = 0, maxY = 0;
       let first = true;
       const kids = this.children ? [...this.children] : [];
       for (const kid of kids) {
-        if (kid.tagName === "text" || kid.tagName === "tspan") continue;
         const b = kid.getBBox ? kid.getBBox() : null;
         if (!b || (b.width === 0 && b.height === 0 && b.x === 0 && b.y === 0)) continue;
         const x0 = b.x, y0 = b.y, x1 = b.x + b.width, y1 = b.y + b.height;
@@ -173,6 +187,26 @@ function ensureDom() {
     globalThis.SVGElement.prototype.getTotalLength || function () {
       return 0;
     };
+
+  // Some mermaid renderers (class diagram etc.) call getBBox on what turns out
+  // to be an HTML/XHTML label element or even a Text node — browsers have no
+  // getBBox there either, but jsdom layout differs enough that the code path
+  // is reached. Give every Node the same text-based estimate so rendering
+  // doesn't throw. (SVGElement has its own richer implementation above — this
+  // is the fallback for HTML, foreignObject-inner elements and text nodes.)
+  dom.window.Node.prototype.getBBox = function () {
+    const text = (this.textContent || "").trim();
+    if (text) {
+      const size = fontSizeOf(this);
+      return {
+        x: 0,
+        y: 0,
+        width: measureTextWidth(text, size),
+        height: size * 1.25,
+      };
+    }
+    return { x: 0, y: 0, width: 0, height: 0 };
+  };
 
   // mermaid's splitText (line wrapping) measures words with
   // SVGTextElement.getComputedTextLength — jsdom stubs it to 0, so every word
@@ -292,6 +326,16 @@ async function convertMermaid(mmd) {
   const { elements } = await parseMermaidToExcalidraw(mmd, {});
   if (!Array.isArray(elements) || elements.length === 0) {
     throw new Error("parser returned no elements");
+  }
+
+  // m2e 官方转换器对 class/er/state/gantt 等类型在 mermaid 11.12 下会降级为
+  // graphImage（浏览器端同样如此）——明确告知而不是静默存一张图。
+  if (elements.length === 1 && elements[0].type === "image") {
+    throw new Error(
+      "this mermaid diagram type is not natively supported by the official " +
+        "converter (same as the frontend AI) — the scene would fall back to " +
+        "an image. Try flowchart/sequence diagrams.",
+    );
   }
 
   const { convertToExcalidrawElements } = await loadElement();
