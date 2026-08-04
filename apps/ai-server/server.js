@@ -2,7 +2,7 @@
 /**
  * Excalidraw 本地 AI 后端
  * 实现 Excalidraw 期望的 /v1/ai/text-to-diagram/chat-streaming SSE 接口
- * 背后调用 opencode.ai (DeepSeek V4 Flash, 免费)
+ * 背后调用 opencode.ai Zen 网关 (DeepSeek V4 Flash, opencode-go 付费订阅模型)
  *
  * SSE 协议 (Excalidraw TTDStreamFetch):
  *   data: {"type":"content","delta":"<mermaid>"}
