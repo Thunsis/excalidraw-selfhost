@@ -1,9 +1,0 @@
-#!/usr/bin/env node
-"use strict";
-/**
- * excalidraw — npm-link shim entry.
- * The real CLI lives at repo root bin/excalidraw (single source of truth).
- * npm link requires the bin target to live inside the package (cli/), so this
- * wrapper re-executes the canonical entry by requiring it.
- */
-require("../../bin/excalidraw");

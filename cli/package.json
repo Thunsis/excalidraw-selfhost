@@ -4,9 +4,6 @@
   "description": "Excalidraw cloud workspace CLI — list/create/AI-generate canvases in your self-hosted account",
   "private": true,
   "type": "commonjs",
-  "bin": {
-    "excalidraw": "./bin/excalidraw"
-  },
   "engines": {
     "node": ">=18"
   },

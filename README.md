@@ -58,8 +58,8 @@ Install the CLI (optional but recommended):
 
 ```bash
 cd excalidraw-selfhost/cli
-npm install && npm run fonts    # woff2 → ttf for PNG export
-npm link                        # → `excalidraw` on PATH
+npm install                # ttf fonts are checked in — no build step
+ln -sf "$(pwd)/../bin/excalidraw" ~/.npm-global/bin/   # → `excalidraw` on PATH
 excalidraw list                 # your cloud scenes
 ```
 

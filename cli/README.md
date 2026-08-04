@@ -9,8 +9,7 @@ bin/excalidraw          CLI entry (node, zero dependencies)
 cli/src/config.js       env/.env configuration
 cli/src/api.js          ws-server REST client (login, scenes, user-data)
 cli/src/ai.js           text-to-diagram SSE client (ai-server)
-cli/src/official.js     official conversion pipeline (browser: parser CDN + materialize)
-cli/src/mcp.js          mcphub MCP client (drives playwright headless Chrome)
+cli/src/official.js     official conversion pipeline (pure Node: jsdom + mermaid + m2e)
 cli/src/mermaid.js      built-in fallback converter (no browser required)
 cli/src/builder.js      element builders (minimal field set restoreElements accepts)
 cli/src/commands.js     command implementations
@@ -20,7 +19,7 @@ cli/src/commands.js     command implementations
 
 ```bash
 # from the repo root
-npm link ./cli          # exposes `excalidraw` on PATH
+ln -sf "$(pwd)/bin/excalidraw" ~/.npm-global/bin/   # exposes `excalidraw` on PATH
 # or run directly:
 ./bin/excalidraw --help
 ```
