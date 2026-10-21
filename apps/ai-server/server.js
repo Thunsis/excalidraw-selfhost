@@ -269,6 +269,40 @@ function createHtmlLabelFixer() {
   };
 }
 
+/**
+ * 上游请求（带重试）：网络错误 / 5xx 重试（400 这类客户端错误直接返回不重试）。
+ * 只重试「建连阶段」——一旦开始读流就不再重试，避免重复输出。
+ */
+async function fetchUpstream(body, { attempts = 3, timeoutMs = 120000 } = {}) {
+  let lastErr = null;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      const res = await fetch(`${OPENAI_BASE}/chat/completions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (res.ok || res.status < 500) return res;
+      lastErr = new Error(
+        `Upstream ${res.status}: ${(await res.text().catch(() => "")).slice(0, 200)}`,
+      );
+    } catch (err) {
+      lastErr = err;
+    }
+    if (attempt < attempts) {
+      console.error(
+        `[${new Date().toISOString()}] upstream attempt ${attempt}/${attempts} failed (${lastErr.message}), retrying`,
+      );
+      await new Promise((r) => setTimeout(r, 400 * attempt));
+    }
+  }
+  throw lastErr;
+}
+
 async function handleChatStreaming(req, res) {
   let body = "";
   req.on("data", (c) => (body += c));
@@ -313,21 +347,20 @@ async function handleChatStreaming(req, res) {
       aborted.current = true;
     });
 
+    const promptPreview = String(userMessages.slice(-1)[0]?.content ?? "")
+      .replace(/\s+/g, " ")
+      .slice(0, 60);
+    const startedAt = Date.now();
     try {
-      const upstream = await fetch(`${OPENAI_BASE}/chat/completions`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
+      const upstream = await fetchUpstream(
+        {
           model: MODEL,
           messages: llmMessages,
           stream: true,
           max_tokens: 4096,
-        }),
-        signal: AbortSignal.timeout(120000),
-      });
+        },
+        { timeoutMs: 120000 },
+      );
 
       if (!upstream.ok || !upstream.body) {
         const errText = await upstream.text().catch(() => "");
@@ -349,11 +382,13 @@ async function handleChatStreaming(req, res) {
       let emitted = false;
       const sanitizer = createMermaidSanitizer();
       const tagFixer = createHtmlLabelFixer();
+      let outChars = 0;
       const emitContent = (text) => {
         if (text) {
           const fixed = tagFixer.push(text);
           if (fixed) {
             emitted = true;
+            outChars += fixed.length;
             sendSSE(res, { type: "content", delta: fixed });
           }
         }
@@ -388,16 +423,25 @@ async function handleChatStreaming(req, res) {
       if (!emitted) {
         console.log(
           `[${new Date().toISOString()}] Empty response for prompt: ${JSON.stringify(
-            userMessages.slice(-1)[0]?.content,
+            promptPreview,
           ).slice(0, 100)}`,
         );
       }
+      console.log(
+        `[${new Date().toISOString()}] ttd ${((Date.now() - startedAt) / 1000).toFixed(1)}s out=${outChars}ch "${promptPreview}"`,
+      );
     } catch (err) {
-      console.error(`[${new Date().toISOString()}] Stream error:`, err.message);
+      console.error(
+        `[${new Date().toISOString()}] Stream error "${promptPreview}":`,
+        err.message,
+      );
+      const friendly = /fetch failed|timeout|aborted|network/i.test(err.message || "")
+        ? "上游模型连接失败（已重试），请稍后重试"
+        : err.message || "Upstream failure";
       try {
         sendSSE(res, {
           type: "error",
-          error: { message: err.message || "Upstream failure", status: 500 },
+          error: { message: friendly, status: 500 },
         });
         sendSSE(res, { type: "done", finishReason: "stop" });
         res.write("data: [DONE]\n\n");
@@ -472,13 +516,8 @@ async function handleSceneName(req, res) {
       for (let attempt = 0; attempt < 3 && !name; attempt++) {
         if (attempt > 0) await new Promise((r) => setTimeout(r, 300 * attempt));
         try {
-          const upstream = await fetch(`${OPENAI_BASE}/chat/completions`, {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${API_KEY}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
+          const upstream = await fetchUpstream(
+            {
               model: MODEL,
               messages: [
                 { role: "system", content: buildSceneNamePrompt(joined.trim()) },
@@ -489,9 +528,9 @@ async function handleSceneName(req, res) {
               // 导致 content 为空（输出全在 reasoning_content）——必须留足思考空间
               max_tokens: 1000,
               temperature: 0.3,
-            }),
-            signal: AbortSignal.timeout(30000),
-          });
+            },
+            { attempts: 2, timeoutMs: 30000 },
+          );
 
           if (!upstream.ok) {
             const errText = await upstream.text().catch(() => "");
