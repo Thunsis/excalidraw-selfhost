@@ -66,8 +66,8 @@ Values are also picked up from the repo's `.env` if present.
 `excalidraw ai "画一个购物流程"` does three things:
 
 1. **text-to-diagram** — streams `ai-server`'s SSE endpoint
-   (`/v1/ai/text-to-diagram/chat-streaming`, backed by opencode.ai
-   deepseek-v4-flash) and collects the Mermaid definition;
+   (`/v1/ai/text-to-diagram/chat-streaming`, backed by CommandCode
+   `deepseek/deepseek-v4.1-flash`) and collects the Mermaid definition;
 2. **apply** — the **official pipeline** (default): the exact converter the
    frontend AI uses — `@excalidraw/mermaid-to-excalidraw@2.2.2` imported from
    esm.sh inside a headless Chrome (via mcphub → playwright MCP), then

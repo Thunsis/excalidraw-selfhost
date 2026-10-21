@@ -2,7 +2,7 @@
 /**
  * Excalidraw 本地 AI 后端
  * 实现 Excalidraw 期望的 /v1/ai/text-to-diagram/chat-streaming SSE 接口
- * 背后调用 opencode.ai Zen 网关 (DeepSeek V4 Flash, opencode-go 付费订阅模型)
+ * 背后调用 CommandCode 网关 (DeepSeek V4.1 Flash，与 Hermes 同源同 key)
  *
  * SSE 协议 (Excalidraw TTDStreamFetch):
  *   data: {"type":"content","delta":"<mermaid>"}
@@ -14,9 +14,10 @@ const fs = require("fs");
 const path = require("path");
 
 const PORT = Number(process.env.PORT || 3016);
-const OPENAI_BASE = process.env.OPENAI_BASE || "https://opencode.ai/zen/go/v1";
-const MODEL = process.env.MODEL || "deepseek-v4-flash";
-const API_KEY = process.env.API_KEY || loadKeyFromConfig();
+const OPENAI_BASE = process.env.OPENAI_BASE || "https://api.commandcode.ai/provider/v1";
+const MODEL = process.env.MODEL || "deepseek/deepseek-v4.1-flash";
+const API_KEY =
+  process.env.API_KEY || process.env.OPENAI_API_KEY || loadKeyFromConfig();
 
 const SYSTEM_PROMPT = `You are a Mermaid diagram generator. The user describes a diagram they want in natural language.
 Generate ONLY valid Mermaid.js code — nothing else, no markdown fences, no explanation, no commentary.
@@ -32,19 +33,44 @@ Use clear node labels, proper edge labels, and Chinese labels when the user writ
 Always prefer a complete, syntactically valid diagram over a partial one.`;
 
 function loadKeyFromConfig() {
-  // 优先 OPENAI_CONFIG_FILE（通用，任意 YAML/JSON 文件里的 openai_api_key 或 opencode-go.api_key），
-  // 兼容旧路径 ~/.hermes/config.yaml（本地现状）
+  // 从一个「配置文件」里取 key，兼容两种格式：
+  //   1) YAML：openai_api_key / commandcode.api_key / opencode-go.api_key（值可为 ${VAR} 间接引用）
+  //   2) dotenv：COMMANDCODE_API_KEY=xxx / OPENAI_API_KEY=xxx
+  // ${VAR} 依次从进程环境、配置文件同目录 .env、上级目录 .env 解析
   const configFile =
     process.env.OPENAI_CONFIG_FILE || path.join(process.env.HOME || "", ".hermes/config.yaml");
+  let conf = "";
   try {
-    const conf = fs.readFileSync(configFile, "utf8");
-    const m =
-      conf.match(/openai_api_key:\s*['"]?([^'"\n]+)/) ||
-      conf.match(/opencode-go:\s*\n\s*api_key:\s*['"]?([^'"\n]+)/);
-    return m ? m[1].trim() : "";
+    conf = fs.readFileSync(configFile, "utf8");
   } catch {
     return "";
   }
+  const m =
+    conf.match(/openai_api_key:\s*['"]?([^'"\n]+)/) ||
+    conf.match(/commandcode:[\s\S]{0,300}?\bapi_key:\s*['"]?([^'"\n]+)/) ||
+    conf.match(/opencode-go:[\s\S]{0,300}?\bapi_key:\s*['"]?([^'"\n]+)/) ||
+    conf.match(/^\s*(?:COMMANDCODE_API_KEY|OPENAI_API_KEY)=['"]?([^'"\n]+)/m);
+  if (!m) return "";
+  let key = m[1].trim();
+  const ref = key.match(/^\$\{([A-Za-z0-9_]+)\}$/);
+  if (ref) key = resolveEnvVar(ref[1], path.dirname(configFile));
+  return key;
+}
+
+function resolveEnvVar(name, dir) {
+  if (process.env[name]) return String(process.env[name]).trim();
+  const candidates = [path.join(dir, ".env"), path.join(dir, "..", ".env")];
+  for (const file of candidates) {
+    try {
+      const txt = fs.readFileSync(file, "utf8");
+      const re = new RegExp(`^\\s*${name}\\s*=\\s*['"]?([^'"\\n]+)`, "m");
+      const mm = txt.match(re);
+      if (mm) return mm[1].trim();
+    } catch {
+      /* 该候选文件不存在，继续 */
+    }
+  }
+  return "";
 }
 
 function sendSSE(res, obj) {
@@ -414,7 +440,7 @@ async function handleSceneName(req, res) {
                 { role: "user", content: "Name this canvas." },
               ],
               stream: false,
-              // deepseek-v4-flash 是推理模型：max_tokens 太小会被思考过程占满
+              // deepseek-v4.1-flash 是推理模型：max_tokens 太小会被思考过程占满
               // 导致 content 为空（输出全在 reasoning_content）——必须留足思考空间
               max_tokens: 1000,
               temperature: 0.3,

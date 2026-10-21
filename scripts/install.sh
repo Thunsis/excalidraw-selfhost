@@ -39,8 +39,8 @@ set +a
 : "${WS_DATA_DIR:=$REPO_DIR/apps/ws-server/data}"
 : "${JWT_SECRET_FILE:=$WS_DATA_DIR/.jwt-secret}"
 : "${OPENAI_CONFIG_FILE:=$HOME/.hermes/config.yaml}"
-: "${MODEL:=deepseek-v4-flash}"
-: "${OPENAI_BASE:=https://opencode.ai/zen/go/v1}"
+: "${MODEL:=deepseek/deepseek-v4.1-flash}"
+: "${OPENAI_BASE:=https://api.commandcode.ai/provider/v1}"
 : "${CLOUDFLARED_LOG:=$CLOUDFLARED_DIR/excalidraw-tunnel.log}"
 : "${ACCESS_LOG:=/tmp/caddy-access.log}"
 
