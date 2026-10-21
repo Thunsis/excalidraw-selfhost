@@ -19,18 +19,18 @@ const MODEL = process.env.MODEL || "deepseek/deepseek-v4.1-flash";
 const API_KEY =
   process.env.API_KEY || process.env.OPENAI_API_KEY || loadKeyFromConfig();
 
-const SYSTEM_PROMPT = `You are a Mermaid diagram generator. The user describes a diagram they want in natural language.
-Generate ONLY valid Mermaid.js code — nothing else, no markdown fences, no explanation, no commentary.
-Choose the most appropriate Mermaid diagram type for the request:
-- flowchart (TB/LR/TD) for processes, workflows, decision trees
-- sequenceDiagram for interactions/timelines between actors
-- classDiagram for object-oriented structures
-- stateDiagram-v2 for state machines
-- erDiagram for entity relationships
-- gantt for schedules/timelines
-- mindmap for hierarchical brainstorming
-Use clear node labels, proper edge labels, and Chinese labels when the user writes in Chinese.
-Always prefer a complete, syntactically valid diagram over a partial one.`;
+const SYSTEM_PROMPT = `You are a Mermaid diagram generator for the Excalidraw whiteboard. The user describes a diagram in natural language.
+Output ONLY Mermaid source — no markdown fences, no explanation, no commentary.
+
+Hard rules (the renderer fails on anything else):
+1. Always use the flowchart type: start with "flowchart TB" (or TD/LR when the request clearly fits). NEVER use sequenceDiagram, classDiagram, stateDiagram, erDiagram, gantt, mindmap, pie, or flowchart-elk.
+2. NEVER use "subgraph ... end" blocks. Model grouping as a normal node (e.g. 客户端层) with arrows to/from its parts.
+3. No HTML inside labels: no <br/>, <b>, <i>, <span>. Plain text only.
+4. No styling or interaction directives: no classDef, class, style, linkStyle, click, direction.
+5. Keep every label short (≤ 12 Chinese characters or ≤ 24 latin characters). Quote labels that contain punctuation or spaces: A["支付(微信/支付宝)"].
+6. Shapes: A[矩形] A(圆角) A{判断} A((圆)) A[[子程序]]. Arrows: --> -.-> ==>. Edge labels: A -->|是| B.
+7. Chinese request → Chinese labels. Stay focused (≤ 15 nodes) and finish the whole diagram.`;
+
 
 function loadKeyFromConfig() {
   // 从一个「配置文件」里取 key，兼容两种格式：
@@ -233,6 +233,42 @@ function createMermaidSanitizer() {
   };
 }
 
+/**
+ * Mermaid 标签里的 HTML 标签清理器（<br/> → 真换行，其余简单标签剥掉）。
+ *
+ * 背景：m2e 官方转换器把 `<br/>` 原样写进 Excalidraw 文本元素（Excalidraw 文本不解析
+ * HTML），画布上就显示字面 `<br/>`。实测 mermaid 接受标签内真实换行、m2e 按行数算高度，
+ * 所以这里换成 "\n" 得到真正的多行文本。
+ * 流式注意：`<br` 可能被拆到两个 chunk，必须暂存未闭合的标签尾巴。
+ */
+function createHtmlLabelFixer() {
+  let pending = "";
+  const MAX_TAG = 32;
+  const apply = (s) =>
+    s
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/?(?:b|i|u|em|strong|span|code|div|p)(?:\s[^>]*)?>/gi, "");
+  return {
+    push(text) {
+      pending += text;
+      let hold = "";
+      const lt = pending.lastIndexOf("<");
+      if (lt !== -1 && pending.indexOf(">", lt) === -1 && pending.length - lt < MAX_TAG) {
+        hold = pending.slice(lt);
+        pending = pending.slice(0, lt);
+      }
+      const out = apply(pending);
+      pending = hold;
+      return out;
+    },
+    flush() {
+      const out = apply(pending);
+      pending = "";
+      return out;
+    },
+  };
+}
+
 async function handleChatStreaming(req, res) {
   let body = "";
   req.on("data", (c) => (body += c));
@@ -312,10 +348,14 @@ async function handleChatStreaming(req, res) {
       let buffer = "";
       let emitted = false;
       const sanitizer = createMermaidSanitizer();
+      const tagFixer = createHtmlLabelFixer();
       const emitContent = (text) => {
         if (text) {
-          emitted = true;
-          sendSSE(res, { type: "content", delta: text });
+          const fixed = tagFixer.push(text);
+          if (fixed) {
+            emitted = true;
+            sendSSE(res, { type: "content", delta: fixed });
+          }
         }
       };
 
@@ -336,6 +376,11 @@ async function handleChatStreaming(req, res) {
         }
       }
       sanitizer.flush(emitContent);
+      const tail = tagFixer.flush();
+      if (tail) {
+        emitted = true;
+        sendSSE(res, { type: "content", delta: tail });
+      }
 
       sendSSE(res, { type: "done", finishReason: "stop" });
       res.write("data: [DONE]\n\n");
